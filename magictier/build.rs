@@ -1,5 +1,7 @@
-﻿#[cfg(target_os = "windows")]
-use std::{env, fs, path::PathBuf};
+﻿use std::path::PathBuf;
+
+#[cfg(target_os = "windows")]
+use std::{env, fs};
 
 #[cfg(target_os = "windows")]
 struct WindowsBuild {}
