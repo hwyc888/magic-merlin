@@ -64,29 +64,52 @@ jobs:
             exit 1
           fi
 
+      - name: Verify KoolCenter plugin template
+        run: |
+          set -eux
+          test -f router-plugin/install.sh
+          test -f router-plugin/uninstall.sh
+          test -f router-plugin/.valid
+          test -f router-plugin/config.json.js
+          test -f router-plugin/scripts/magictier_config.sh
+          test -f router-plugin/webs/Module_magictier.asp
+          grep -qx 'hnd' router-plugin/.valid
+          sh -n router-plugin/install.sh
+          sh -n router-plugin/uninstall.sh
+          sh -n router-plugin/scripts/magictier_config.sh
+
       - name: Create router packages
         run: |
           set -eux
-          mkdir -p DIST/TUF-BE3600-V2/bin DIST/RT-AX86U/bin
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/TUF-BE3600-V2/bin/
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-cli DIST/TUF-BE3600-V2/bin/
-          cp -a DIST/TUF-BE3600-V2/bin/. DIST/RT-AX86U/bin/
+          rm -rf DIST
+          mkdir -p DIST/TUF-BE3600-V2/magictier DIST/RT-AX86U/magictier
 
-          cat > DIST/TUF-BE3600-V2/README.txt <<'EOF'
-          MagicTier for ASUS TUF-BE3600 V2 (hardware label TUF_3600_V2)
-          Architecture: ARM64 / aarch64
-          Binary format: statically linked Linux musl ELF
-          Copy bin/magictier-core and bin/magictier-cli to /jffs/addons/magic-merlin/bin/ on the router.
-          EOF
-          cat > DIST/RT-AX86U/README.txt <<'EOF'
-          MagicTier for ASUS RT-AX86U
-          Architecture: ARM64 / aarch64
-          Binary format: statically linked Linux musl ELF
-          Copy bin/magictier-core and bin/magictier-cli to /jffs/addons/magic-merlin/bin/ on the router.
-          EOF
+          cp -a router-plugin/. DIST/TUF-BE3600-V2/magictier/
+          cp -a router-plugin/. DIST/RT-AX86U/magictier/
+          mkdir -p DIST/TUF-BE3600-V2/magictier/bin DIST/RT-AX86U/magictier/bin
 
-          tar -C DIST/TUF-BE3600-V2 -czf DIST/magic-merlin-TUF-BE3600-V2-aarch64.tar.gz .
-          tar -C DIST/RT-AX86U -czf DIST/magic-merlin-RT-AX86U-aarch64.tar.gz .
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/TUF-BE3600-V2/magictier/bin/
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-cli DIST/TUF-BE3600-V2/magictier/bin/
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/RT-AX86U/magictier/bin/
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-cli DIST/RT-AX86U/magictier/bin/
+
+          chmod 0755 DIST/*/magictier/install.sh DIST/*/magictier/uninstall.sh DIST/*/magictier/scripts/magictier_config.sh
+          printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2' > DIST/TUF-BE3600-V2/magictier/target-model.txt
+          printf '%s\n' 'RT-AX86U' > DIST/RT-AX86U/magictier/target-model.txt
+
+          tar -C DIST/TUF-BE3600-V2 -czf DIST/magictier-TUF-BE3600-V2-koolcenter-arm64.tar.gz magictier
+          tar -C DIST/RT-AX86U -czf DIST/magictier-RT-AX86U-koolcenter-arm64.tar.gz magictier
+
+          for pkg in DIST/*.tar.gz; do
+            echo "Checking ${pkg}"
+            tar -tzf "${pkg}" | grep -qx 'magictier/install.sh'
+            tar -tzf "${pkg}" | grep -qx 'magictier/.valid'
+            tar -tzf "${pkg}" | grep -qx 'magictier/bin/magictier-core'
+            tar -tzf "${pkg}" | grep -qx 'magictier/bin/magictier-cli'
+            tar -tzf "${pkg}" | grep -qx 'magictier/scripts/magictier_config.sh'
+            tar -tzf "${pkg}" | grep -qx 'magictier/webs/Module_magictier.asp'
+          done
+
           sha256sum DIST/*.tar.gz > DIST/SHA256SUMS.txt
           ls -lh DIST/*.tar.gz DIST/SHA256SUMS.txt
 
