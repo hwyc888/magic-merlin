@@ -85,7 +85,7 @@ http = { version = "1", default-features = false, features = [
 tokio-rustls = { version = "0.26", default-features = false, optional = true }
 
 # for tap device
-tun = { package = "tun-easytier", path = "../../magictier2.5-vendor/rust-tun-local", features = [
+tun = { package = "tun-easytier", git = "https://github.com/EasyTier/rust-tun", features = [
     "async",
 ], optional = true }
 # for net ns
@@ -172,7 +172,7 @@ mimalloc = { version = "*", optional = true }
 # mips
 atomic-shim = "0.2.0"
 
-smoltcp = { path = "../../magictier2.5-vendor/smoltcp-local", optional = true, default-features = false, features = [
+smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp.git", rev = "0a926767a68bc88d5512afefa7529c5ecdade4ea", optional = true, default-features = false, features = [
     "std",
     "medium-ip",
     "proto-ipv4",
@@ -197,18 +197,18 @@ sys-locale = "0.3"
 ringbuf = "0.4.5"
 async-ringbuf = "0.3.1"
 
-service-manager = { path = "../../magictier2.5-vendor/service-manager-rs-local" }
+service-manager = { git = "https://github.com/EasyTier/service-manager-rs.git", branch = "main" }
 
 zstd = { version = "0.13" }
 
-kcp-sys = { path = "../../magictier2.5-vendor/kcp-sys-local" }
+kcp-sys = { git = "https://github.com/EasyTier/kcp-sys", rev = "71eff18c573a4a71bf99c7fabc6a8b9f211c84c1" }
 
 prost-reflect = { version = "0.14.5", default-features = false, features = [
     "derive",
 ] }
 
 # for http connector
-http_req = { path = "../../magictier2.5-vendor/http_req-local", default-features = false, features = [
+http_req = { git = "https://github.com/EasyTier/http_req.git", default-features = false, features = [
     "rust-tls",
 ] }
 
@@ -245,7 +245,7 @@ dbus = { version = "0.9.7", features = ["vendored"] }
 which = "7.0.3"
 
 [target.'cfg(all(windows, any(target_arch = "x86_64", target_arch = "x86")))'.dependencies]
-windivert = { path = "../../magictier2.5-vendor/windivert-rust-local/windivert", features = ["static"] }
+windivert = { git = "https://github.com/EasyTier/windivert-rust.git", rev = "adcc56d1550f7b5377ec2b3429f413ee24a77375", features = ["static"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.52.0", features = [
@@ -292,7 +292,7 @@ tonic-build = "0.12"
 globwalk = "0.8.1"
 regex = "1"
 prost-build = "0.13.2"
-rpc_build = { package = "magictier-rpc-build", path = "../magictier-rpc-build", features = [
+rpc_build = { package = "easytier-rpc-build", version = "0.1.0", features = [
     "internal-namespace",
 ] }
 prost-reflect-build = { version = "0.14.0" }

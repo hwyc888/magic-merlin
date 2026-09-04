@@ -1,0 +1,101 @@
+name: Build ASUS Router ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'magictier/**'
+      - '.github/workflows/router-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler cmake clang pkg-config file binutils
+
+      - name: Install Rust 1.89 and ARM64 musl target
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          targets: aarch64-unknown-linux-musl
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Build ARM64 static binaries
+        working-directory: magictier
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin magictier-core --bin magictier-cli
+
+      - name: Verify binaries
+        run: |
+          set -eux
+          CORE=magictier/target/aarch64-unknown-linux-musl/release/magictier-core
+          CLI=magictier/target/aarch64-unknown-linux-musl/release/magictier-cli
+          test -x "$CORE"
+          test -x "$CLI"
+          file "$CORE" "$CLI"
+          readelf -h "$CORE" | grep -E 'Class:|Machine:'
+          readelf -h "$CLI" | grep -E 'Class:|Machine:'
+          if readelf -l "$CORE" | grep -q 'Requesting program interpreter'; then
+            echo 'ERROR: magictier-core is dynamically linked'
+            exit 1
+          fi
+          if readelf -l "$CLI" | grep -q 'Requesting program interpreter'; then
+            echo 'ERROR: magictier-cli is dynamically linked'
+            exit 1
+          fi
+
+      - name: Create router packages
+        run: |
+          set -eux
+          mkdir -p DIST/TUF-BE3600-V2/bin DIST/RT-AX86U/bin
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/TUF-BE3600-V2/bin/
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-cli DIST/TUF-BE3600-V2/bin/
+          cp -a DIST/TUF-BE3600-V2/bin/. DIST/RT-AX86U/bin/
+
+          cat > DIST/TUF-BE3600-V2/README.txt <<'EOF'
+          MagicTier for ASUS TUF-BE3600 V2 (hardware label TUF_3600_V2)
+          Architecture: ARM64 / aarch64
+          Binary format: statically linked Linux musl ELF
+          Copy bin/magictier-core and bin/magictier-cli to /jffs/addons/magic-merlin/bin/ on the router.
+          EOF
+          cat > DIST/RT-AX86U/README.txt <<'EOF'
+          MagicTier for ASUS RT-AX86U
+          Architecture: ARM64 / aarch64
+          Binary format: statically linked Linux musl ELF
+          Copy bin/magictier-core and bin/magictier-cli to /jffs/addons/magic-merlin/bin/ on the router.
+          EOF
+
+          tar -C DIST/TUF-BE3600-V2 -czf DIST/magic-merlin-TUF-BE3600-V2-aarch64.tar.gz .
+          tar -C DIST/RT-AX86U -czf DIST/magic-merlin-RT-AX86U-aarch64.tar.gz .
+          sha256sum DIST/*.tar.gz > DIST/SHA256SUMS.txt
+          ls -lh DIST/*.tar.gz DIST/SHA256SUMS.txt
+
+      - name: Upload router packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: magic-merlin-asus-arm64
+          path: |
+            DIST/*.tar.gz
+            DIST/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
