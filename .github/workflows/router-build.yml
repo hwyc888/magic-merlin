@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'magictier/**'
+      - 'router-plugin/**'
       - '.github/workflows/router-build.yml'
 
 permissions:
