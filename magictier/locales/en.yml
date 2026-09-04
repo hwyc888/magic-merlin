@@ -1,0 +1,76 @@
+core_clap:
+  config_server: config server address
+  machine_id: machine id for config recovery
+  config_file: path to the config file
+  config_dir: directory to load config files
+  disable_env_parsing: disable environment variable parsing
+  generate_completions: generate shell completions
+  network_name: network name
+  network_secret: network secret
+  ipv4: ipv4 address
+  ipv6: ipv6 address
+  dhcp: auto assign IP
+  peers: peers to connect
+  external_node: use public node
+  proxy_networks: export local networks
+  rpc_portal: rpc portal address
+  rpc_portal_whitelist: rpc portal whitelist
+  listeners: listeners to accept connections
+  no_listener: do not listen
+  console_log_level: console log level
+  file_log_level: file log level
+  file_log_dir: log directory
+  hostname: host name
+  instance_name: instance name
+  vpn_portal: vpn portal url
+  default_protocol: default protocol
+  disable_encryption: disable encryption
+  encryption_algorithm: encryption algorithm
+  multi_thread: use multi-thread
+  multi_thread_count: thread count
+  disable_ipv6: disable ipv6
+  dev_name: tun device name
+  mtu: mtu size
+  latency_first: latency first mode
+  exit_nodes: exit nodes
+  enable_exit_node: enable exit node
+  proxy_forward_by_system: forward via system
+  no_tun: no tun device
+  use_smoltcp: use smoltcp
+  manual_routes: manual routes
+  relay_network_whitelist: relay whitelist
+  disable_p2p: disable p2p
+  p2p_only: p2p only
+  disable_tcp_hole_punching: disable tcp hole punching
+  disable_udp_hole_punching: disable udp hole punching
+  disable_sym_hole_punching: disable sym hole punching
+  relay_all_peer_rpc: relay all peer rpc
+  socks5: socks5 port
+  ipv6_listener: ipv6 listener
+  compression: compression
+  mapped_listeners: mapped listeners
+  bind_device: bind device
+  enable_kcp_proxy: enable kcp proxy
+  disable_kcp_input: disable kcp input
+  enable_quic_proxy: enable quic proxy
+  disable_quic_input: disable quic input
+  quic_listen_port: quic listen port
+  port_forward: port forward
+  accept_dns: enable magic dns
+  tld_dns_zone: dns zone
+  private_mode: private mode
+  foreign_relay_bps_limit: relay bps limit
+  tcp_whitelist: tcp whitelist
+  udp_whitelist: udp whitelist
+  disable_relay_kcp: disable relay kcp
+  enable_relay_foreign_network_kcp: enable foreign kcp relay
+  stun_servers: stun servers
+  stun_servers_v6: stun servers v6
+  check_config: check config
+  file_log_size_mb: log file size mb
+  file_log_count: log file count
+  daemon: run as daemon
+  verbose: show detailed startup information
+
+core_app:
+  panic_backtrace_save: backtrace saved to magictier-panic.log

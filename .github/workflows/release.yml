@@ -1,0 +1,144 @@
+name: Create Draft Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 触发条件：推送版本标签（如 v1.0.0, v2.1.3 等）
+
+permissions:
+  contents: write  # Required for creating releases and uploading assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Validate required files
+        run: |
+          echo "检查必要文件..."
+          REQUIRED_FILES=(
+            "magictier/bin/magictier-core"
+            "magictier/scripts/magictier_config.sh"
+            "magictier/webs/Module_magictier.asp"
+            "magictier/install.sh"
+            "magictier/config.json.js"
+            "magictier/.valid"
+          )
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "错误: 缺少必要文件: $file"
+              exit 1
+            fi
+          done
+          
+          echo "✓ 所有必要文件检查通过"
+          
+      - name: Validate required directories
+        run: |
+          echo "检查目录结构..."
+          REQUIRED_DIRS=(
+            "magictier/bin"
+            "magictier/scripts"
+            "magictier/webs"
+            "magictier/res"
+          )
+          
+          for dir in "${REQUIRED_DIRS[@]}"; do
+            if [ ! -d "$dir" ]; then
+              echo "错误: 缺少必要目录: $dir"
+              exit 1
+            fi
+          done
+          
+          echo "✓ 所有必要目录检查通过"
+          
+      - name: Build package
+        run: |
+          echo "开始打包..."
+          chmod +x build_package.sh
+          ./build_package.sh
+          
+          # 验证打包结果
+          if [ ! -f "magictier.tar.gz" ]; then
+            echo "错误: 打包失败"
+            exit 1
+          fi
+          
+          if [ ! -f "magictier.tar.gz.md5" ]; then
+            echo "错误: MD5文件生成失败"
+            exit 1
+          fi
+          
+          # 获取版本信息
+          echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          
+          # 获取文件信息用于release描述
+          FILE_SIZE=$(ls -lh magictier.tar.gz | awk '{print $5}')
+          MD5_VALUE=$(cat magictier.tar.gz.md5 | awk '{print $1}')
+          
+          echo "FILE_SIZE=${FILE_SIZE}" >> $GITHUB_ENV
+          echo "MD5_VALUE=${MD5_VALUE}" >> $GITHUB_ENV
+          
+          echo "✓ 打包完成"
+          echo "文件大小: ${FILE_SIZE}"
+          echo "MD5校验: ${MD5_VALUE}"
+          
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
+        with:
+          tag_name: ${{ env.RELEASE_VERSION }}
+          name: MagicTier KoolShare Plugin ${{ env.RELEASE_VERSION }}
+          draft: true
+          prerelease: false
+          body: |
+            # MagicTier KoolShare 插件 ${{ env.RELEASE_VERSION }}
+            
+            ## 📦 安装包信息
+            
+            | 项目 | 信息 |
+            |------|------|
+            | **文件名** | `magictier.tar.gz` |
+            | **文件大小** | `${{ env.FILE_SIZE }}` |
+            | **MD5校验** | `${{ env.MD5_VALUE }}` |
+            | **支持平台** | ARM64 (aarch64) |
+            | **目标设备** | ARM64 HND（RT-AX86U、TUF-BE3600 等）+ KoolCenter/KoolShare |
+            
+            ## 🚀 安装方法
+            
+            1. 下载 `magictier.tar.gz` 安装包
+            2. 登录路由器管理界面
+            3. 进入 **软件中心** → **离线安装** 
+            4. 上传安装包并等待安装完成
+            5. 在软件中心找到 **MagicTier** 插件并配置使用
+            
+            ## 📋 文件说明
+            
+            - `magictier.tar.gz` - 主安装包
+            - `magictier.tar.gz.md5` - MD5校验文件
+            
+            ## ⚠️ 注意事项
+            
+            - 请确认路由器为 ARM64 架构
+            - 安装前建议备份当前配置
+            - 详细使用说明请参考 [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+            
+            ---
+            
+            🔧 **技术支持**: 如遇问题请查看仓库 Issues 或参考文档
+          files: |
+            magictier.tar.gz
+            magictier.tar.gz.md5
+
+      - name: Release summary
+        run: |
+          echo "🎉 Draft release 创建成功!"
+          echo "版本: ${{ env.RELEASE_VERSION }}"
+          echo "文件: magictier.tar.gz (${{ env.FILE_SIZE }})"
+          echo "MD5: ${{ env.MD5_VALUE }}"
+          echo ""
+          echo "请前往 GitHub Releases 页面检查并发布该 draft release。"

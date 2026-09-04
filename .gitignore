@@ -1,0 +1,25 @@
+# Rust build output
+**/target/
+
+# Local environment / secrets
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
