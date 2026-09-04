@@ -47,14 +47,15 @@ install_now() {
     echo_date "安装MagicTier插件文件..."
     mkdir -p /koolshare/bin /koolshare/scripts /koolshare/webs /koolshare/res /koolshare/init.d /koolshare/magictier
 
-    install -m 0755 "${DIR}/bin/magictier-core" /koolshare/bin/magictier-core
-    install -m 0755 "${DIR}/bin/magictier-cli" /koolshare/bin/magictier-cli
+    cp -f "${DIR}/bin/magictier-core" /koolshare/bin/magictier-core
+    cp -f "${DIR}/bin/magictier-cli" /koolshare/bin/magictier-cli
     cp -f "${DIR}/scripts/magictier_config.sh" /koolshare/scripts/magictier_config.sh
     cp -f "${DIR}/webs/Module_magictier.asp" /koolshare/webs/Module_magictier.asp
     cp -f "${DIR}/uninstall.sh" /koolshare/scripts/uninstall_magictier.sh
     cp -f "${DIR}/version" /koolshare/magictier/version
     [ ! -f "${DIR}/res/icon-magictier.png" ] || cp -f "${DIR}/res/icon-magictier.png" /koolshare/res/icon-magictier.png
 
+    chmod 0755 /koolshare/bin/magictier-core /koolshare/bin/magictier-cli
     chmod 0755 /koolshare/scripts/magictier_config.sh /koolshare/scripts/uninstall_magictier.sh
     ln -sf /koolshare/scripts/magictier_config.sh /koolshare/init.d/S97magictier.sh
     ln -sf /koolshare/scripts/magictier_config.sh /koolshare/init.d/N97magictier.sh
