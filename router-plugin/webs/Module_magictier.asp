@@ -17,7 +17,7 @@
 <style type="text/css">
 #magictier_log_mask{display:none;position:fixed;z-index:998;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.55)}
 #magictier_log_box{display:none;position:fixed;z-index:999;left:50%;top:50%;transform:translate(-50%,-50%);width:720px;max-width:92%;background:#2f3a3e;border-radius:4px;padding:12px;box-shadow:0 0 18px #000}
-#magictier_log_text{width:98%;height:360px;background:#000;color:#fff;border:1px solid #666;font-family:monospace;font-size:12px;resize:none}
+#magictier_log_text{width:98%;height:360px;background:#000;color:#fff;border:1px solid #666;font-family:monospace;font-size:14px;line-height:1.6;resize:none}
 #magictier_import_mask{display:none;position:fixed;z-index:998;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.55)}
 #magictier_import_box{display:none;position:fixed;z-index:999;left:50%;top:50%;transform:translate(-50%,-50%);width:720px;max-width:92%;background:#2f3a3e;border-radius:4px;padding:12px;box-shadow:0 0 18px #000}
 #magictier_import_text{width:98%;height:360px;background:#111;color:#fff;border:1px solid #666;font-family:monospace;font-size:13px;resize:vertical}
@@ -123,7 +123,7 @@ function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 <body onload="init();">
 <div id="TopBanner"></div><div id="Loading" class="popup_bg"></div>
 <div id="magictier_log_mask" onclick="hide_log();"></div>
-<div id="magictier_log_box"><div style="color:#fff;font-size:16px;margin-bottom:8px;">MagicTier 运行日志</div><textarea id="magictier_log_text" readonly="readonly"></textarea><div style="text-align:center;margin-top:10px;"><input class="button_gen" type="button" onclick="load_log();" value="刷新" />&nbsp;<input class="button_gen" type="button" onclick="clear_log();" value="清空日志" />&nbsp;<input class="button_gen" type="button" onclick="hide_log();" value="关闭" /></div></div>
+<div id="magictier_log_box"><div style="color:#fff;font-size:16px;margin-bottom:4px;">MagicTier 组网状态日志</div><div style="color:#cfd8dc;font-size:12px;margin-bottom:8px;">仅显示网络名称、连接结果和需要用户处理的信息。</div><textarea id="magictier_log_text" readonly="readonly"></textarea><div style="text-align:center;margin-top:10px;"><input class="button_gen" type="button" onclick="load_log();" value="刷新" />&nbsp;<input class="button_gen" type="button" onclick="clear_log();" value="清空日志" />&nbsp;<input class="button_gen" type="button" onclick="hide_log();" value="关闭" /></div></div>
 <div id="magictier_import_mask" onclick="hide_import();"></div>
 <div id="magictier_import_box"><div style="color:#fff;font-size:16px;margin-bottom:8px;">粘贴 MagicTier TOML 配置</div><textarea id="magictier_import_text" placeholder="hostname = &quot;my-node&quot;&#10;instance_name = &quot;default&quot;&#10;ipv4 = &quot;10.126.126.50/24&quot;&#10;&#10;[network_identity]&#10;network_name = &quot;company_vpn&quot;&#10;network_secret = &quot;...&quot;"></textarea><div style="text-align:center;margin-top:10px;"><input class="button_gen" type="button" onclick="import_from_textarea();" value="导入到表单" />&nbsp;<input class="button_gen" type="button" onclick="hide_import();" value="关闭" /></div></div>
 <table class="content" align="center" cellpadding="0" cellspacing="0"><tr><td width="17">&nbsp;</td><td valign="top" width="202"><div id="mainMenu"></div><div id="subMenu"></div></td><td valign="top"><div id="tabMenu" class="submenuBlock"></div>
@@ -132,7 +132,7 @@ function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 <div class="formfontdesc">MagicTier ARMv7/ARM64 组网插件。当前版本：<span id="magictier_version">-</span></div>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行状态</td></tr></thead>
 <tr><th>状态</th><td><span id="run_state">检测中</span>　PID: <span id="run_pid">-</span>　RSS: <span id="run_rss">-</span></td></tr>
-<tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看日志" /></td></tr></table>
+<tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看组网日志" /></td></tr></table>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
 <tr><th>导入配置</th><td><input class="button_gen" type="button" onclick="import_from_clipboard();" value="从剪贴板导入" />&nbsp;<input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" /></td></tr>
 <tr><th>启用 MagicTier</th><td><input id="magictier_enable" type="checkbox" /></td></tr>
@@ -145,6 +145,6 @@ function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 <tr><th>监听地址</th><td><input id="magictier_listeners" class="input_ss_table" style="width:420px" maxlength="1024" placeholder="tcp://0.0.0.0:11010,udp://0.0.0.0:11010" /></td></tr>
 <tr><th>发布子网</th><td><input id="magictier_proxy_networks" class="input_ss_table" style="width:420px" maxlength="512" placeholder="192.168.50.0/24" /></td></tr></table>
 <div style="margin-top:15px;text-align:center;"><input class="button_gen" type="button" onclick="save();" value="保存并应用" /></div>
-<div style="margin:15px 0 5px 0;" class="formfontdesc">7×24保护：控制台仅记录 WARN 以上；RAM 日志上限约 512KB；默认 RSS 超过 256MB 自动停服并关闭自动启动；进程以较低 CPU 优先级运行。</div>
+<div style="margin:15px 0 5px 0;" class="formfontdesc">7×24保护：用户组网日志上限约 128KB，内部诊断日志上限约 64KB；默认 RSS 超过 256MB 自动停服并关闭自动启动；进程以较低 CPU 优先级运行。</div>
 </td></tr></table></td></tr></table></td></tr></table><div id="footer"></div>
 </body></html>

@@ -11,6 +11,7 @@ rm -f /koolshare/bin/magictier-core /koolshare/bin/magictier-cli
 rm -f /koolshare/scripts/magictier_config.sh /koolshare/scripts/magictier_health.sh /koolshare/scripts/uninstall_magictier.sh
 rm -f /koolshare/webs/Module_magictier.asp /koolshare/res/icon-magictier.png
 rm -rf /koolshare/magictier
+rm -f /tmp/upload/magictier_log.txt /tmp/upload/magictier_internal.log /tmp/upload/magictier_health.txt
 
 dbus remove magictier >/dev/null 2>&1
 dbus remove softcenter_module_magictier >/dev/null 2>&1

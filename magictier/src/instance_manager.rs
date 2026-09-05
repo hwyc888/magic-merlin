@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    fs::OpenOptions,
+    io::Write,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use dashmap::DashMap;
 
@@ -69,6 +75,7 @@ impl NetworkInstanceManager {
             .ok_or_else(|| anyhow::anyhow!("instance {} not found", instance_id))?;
         let instance_stop_notifier = instance.get_stop_notifier();
         let instance_event_receiver = instance.subscribe_event();
+        let network_name = instance.get_global_ctx().get_network_identity().network_name;
 
         let instance_map = self.instance_map.clone();
         let instance_stop_tasks = self.instance_stop_tasks.clone();
@@ -81,8 +88,9 @@ impl NetworkInstanceManager {
                 let Some(instance_stop_notifier) = instance_stop_notifier else {
                     return;
                 };
-                let _t = instance_event_receiver
-                    .map(|event| ScopedTask::from(handle_event(instance_id, event)));
+                let _t = instance_event_receiver.map(|event| {
+                    ScopedTask::from(handle_event(instance_id, network_name.clone(), event))
+                });
                 instance_stop_notifier.notified().await;
                 if let Some(instance) = instance_map.get(&instance_id) {
                     if let Some(e) = instance.get_latest_error_msg() {
@@ -264,18 +272,32 @@ impl NetworkInstanceManager {
 #[tracing::instrument]
 fn handle_event(
     instance_id: uuid::Uuid,
+    network_name: String,
     mut events: EventBusSubscriber,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
+        let mut network_connected = false;
+        let mut connect_warning_shown = false;
+        let mut last_connect_target = String::new();
+
         loop {
             if let Ok(e) = events.recv().await {
                 match e {
                     GlobalCtxEvent::PeerAdded(p) => {
                         print_event(instance_id, format!("new peer added. peer_id: {}", p));
+                        if !network_connected {
+                            print_user_event(&format!("✓ 已成功加入网络：{}", network_name));
+                            print_user_event("✓ 组网连接成功");
+                            network_connected = true;
+                        } else {
+                            print_user_event("✓ 新的组网节点已连接");
+                        }
+                        connect_warning_shown = false;
                     }
 
                     GlobalCtxEvent::PeerRemoved(p) => {
                         print_event(instance_id, format!("peer removed. peer_id: {}", p));
+                        print_user_event("⚠ 组网节点已断开，系统正在自动维护连接");
                     }
 
                     GlobalCtxEvent::PeerConnAdded(p) => {
@@ -303,6 +325,10 @@ fn handle_event(
                             instance_id,
                             format!("listener add failed. listener: {}, msg: {}", p, msg),
                         );
+                        print_user_event(&format!(
+                            "⚠ 监听地址启动失败：{}",
+                            endpoint_label(&p)
+                        ));
                     }
 
                     GlobalCtxEvent::ListenerAcceptFailed(p, msg) => {
@@ -341,14 +367,22 @@ fn handle_event(
 
                     GlobalCtxEvent::TunDeviceReady(dev) => {
                         print_event(instance_id, format!("tun device ready. dev: {}", dev));
+                        print_user_event("✓ 虚拟网络接口已就绪");
                     }
 
                     GlobalCtxEvent::TunDeviceError(err) => {
                         print_event(instance_id, format!("tun device error. err: {}", err));
+                        print_user_event("✗ 虚拟网络接口启动失败，请检查路由器 TUN 支持");
                     }
 
                     GlobalCtxEvent::Connecting(dst) => {
                         print_event(instance_id, format!("connecting to peer. dst: {}", dst));
+                        let target = endpoint_label(&dst);
+                        if target != last_connect_target {
+                            print_user_event(&format!("正在连接节点：{}", target));
+                            last_connect_target = target;
+                            connect_warning_shown = false;
+                        }
                     }
 
                     GlobalCtxEvent::ConnectError(dst, ip_version, err) => {
@@ -359,6 +393,16 @@ fn handle_event(
                                 dst, ip_version, err
                             ),
                         );
+                        if !network_connected && !connect_warning_shown {
+                            let target = url::Url::parse(&dst)
+                                .map(|u| endpoint_label(&u))
+                                .unwrap_or_else(|_| "已配置节点".to_string());
+                            print_user_event(&format!(
+                                "⚠ 暂未连接成功，正在自动重试：{}",
+                                target
+                            ));
+                            connect_warning_shown = true;
+                        }
                     }
 
                     GlobalCtxEvent::VpnPortalStarted(portal) => {
@@ -397,6 +441,7 @@ fn handle_event(
 
                     GlobalCtxEvent::DhcpIpv4Conflicted(ip) => {
                         print_event(instance_id, format!("dhcp ip conflict. ip: {:?}", ip));
+                        print_user_event("✗ 虚拟 IPv4 地址发生冲突，请更换虚拟 IP");
                     }
 
                     GlobalCtxEvent::PortForwardAdded(cfg) => {
@@ -430,6 +475,36 @@ fn handle_event(
             }
         }
     })
+}
+
+fn endpoint_label(url: &url::Url) -> String {
+    let host = url.host_str().unwrap_or("未知地址");
+    let host = if host.contains(':') {
+        format!("[{}]", host)
+    } else {
+        host.to_string()
+    };
+    match url.port_or_known_default() {
+        Some(port) => format!("{}://{}:{}", url.scheme(), host, port),
+        None => format!("{}://{}", url.scheme(), host),
+    }
+}
+
+fn print_user_event(msg: &str) {
+    let Ok(path) = std::env::var("MAGICTIER_USER_EVENT_LOG") else {
+        return;
+    };
+    if path.is_empty() {
+        return;
+    }
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(
+            file,
+            "[{}] {}",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+            msg
+        );
+    }
 }
 
 fn print_event(instance_id: uuid::Uuid, msg: String) {

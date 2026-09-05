@@ -65,7 +65,10 @@ install_now() {
     [ -n "$(dbus get magictier_ipv4 2>/dev/null)" ] || dbus set magictier_ipv4="10.144.144.1/24"
     [ -n "$(dbus get magictier_listeners 2>/dev/null)" ] || dbus set magictier_listeners="tcp://0.0.0.0:11010,udp://0.0.0.0:11010"
     [ -n "$(dbus get magictier_enable 2>/dev/null)" ] || dbus set magictier_enable="0"
-    [ -n "$(dbus get magictier_log_max_bytes 2>/dev/null)" ] || dbus set magictier_log_max_bytes="524288"
+    LOG_MAX_CURRENT="$(dbus get magictier_log_max_bytes 2>/dev/null)"
+    if [ -z "${LOG_MAX_CURRENT}" ] || [ "${LOG_MAX_CURRENT}" = "524288" ]; then
+        dbus set magictier_log_max_bytes="131072"
+    fi
     [ -n "$(dbus get magictier_rss_limit_kb 2>/dev/null)" ] || dbus set magictier_rss_limit_kb="262144"
 
     dbus set magictier_version="${PLVER}"

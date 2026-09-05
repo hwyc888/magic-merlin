@@ -8,8 +8,11 @@ BIN="/koolshare/bin/magictier-core"
 PIDFILE="/var/run/magictier.pid"
 MONITOR_PIDFILE="/var/run/magictier-monitor.pid"
 LOGFILE="/tmp/upload/magictier_log.txt"
+INTERNAL_LOGFILE="/tmp/upload/magictier_internal.log"
 LOG_MAX_BYTES="${magictier_log_max_bytes:-131072}"
 LOG_KEEP_BYTES="65536"
+INTERNAL_LOG_MAX_BYTES="65536"
+INTERNAL_LOG_KEEP_BYTES="32768"
 RSS_LIMIT_KB="${magictier_rss_limit_kb:-262144}"
 LOCK_DIR="/tmp/magictier_config.lock"
 
@@ -44,15 +47,27 @@ is_running() {
     pid_is_core "${PID}" && kill -0 "${PID}" 2>/dev/null
 }
 
-trim_log() {
-    [ -f "${LOGFILE}" ] || return 0
-    SIZE="$(wc -c < "${LOGFILE}" 2>/dev/null)"
+trim_one_log() {
+    FILE="$1"
+    MAX_BYTES="$2"
+    KEEP_BYTES="$3"
+    [ -f "${FILE}" ] || return 0
+    SIZE="$(wc -c < "${FILE}" 2>/dev/null)"
     [ -n "${SIZE}" ] || SIZE=0
-    if [ "${SIZE}" -gt "${LOG_MAX_BYTES}" ] 2>/dev/null; then
-        tail -c "${LOG_KEEP_BYTES}" "${LOGFILE}" > "${LOGFILE}.tmp" 2>/dev/null
-        cat "${LOGFILE}.tmp" > "${LOGFILE}" 2>/dev/null
-        rm -f "${LOGFILE}.tmp"
+    if [ "${SIZE}" -gt "${MAX_BYTES}" ] 2>/dev/null; then
+        tail -c "${KEEP_BYTES}" "${FILE}" > "${FILE}.tmp" 2>/dev/null
+        cat "${FILE}.tmp" > "${FILE}" 2>/dev/null
+        rm -f "${FILE}.tmp"
     fi
+}
+
+trim_logs() {
+    trim_one_log "${LOGFILE}" "${LOG_MAX_BYTES}" "${LOG_KEEP_BYTES}"
+    trim_one_log "${INTERNAL_LOGFILE}" "${INTERNAL_LOG_MAX_BYTES}" "${INTERNAL_LOG_KEEP_BYTES}"
+}
+
+log_user() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "${LOGFILE}"
 }
 
 stop_monitor() {
@@ -88,11 +103,11 @@ start_monitor() {
             [ -f "${PIDFILE}" ] || exit 0
             PID="$(cat "${PIDFILE}" 2>/dev/null)"
             pid_is_core "${PID}" || exit 0
-            trim_log
+            trim_logs
             RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"
             [ -n "${RSS}" ] || RSS=0
             if [ "${RSS}" -gt "${RSS_LIMIT_KB}" ] 2>/dev/null; then
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] 内存保护触发：RSS=${RSS}KB，限制=${RSS_LIMIT_KB}KB，已停止MagicTier并关闭自动启动。" >> "${LOGFILE}"
+                log_user "✗ 内存保护已触发：MagicTier占用过高，已自动停止以保护路由器。"
                 dbus set magictier_enable="0"
                 kill "${PID}" 2>/dev/null
                 sleep 2
@@ -108,12 +123,27 @@ start_monitor() {
 start_service() {
     [ "${magictier_enable}" = "1" ] || return 0
     [ -x "${BIN}" ] || {
-        echo "MagicTier核心程序不存在：${BIN}" >> "${LOGFILE}"
+        log_user "✗ MagicTier核心程序不存在，无法启动。"
         return 1
     }
 
     stop_service
-    trim_log
+    : > "${LOGFILE}"
+    : > "${INTERNAL_LOGFILE}"
+
+    log_user "正在启动 MagicTier..."
+    [ -z "${magictier_network_name}" ] || log_user "组网名称：${magictier_network_name}"
+    [ -z "${magictier_ipv4}" ] || log_user "虚拟 IP：${magictier_ipv4}"
+    if [ -n "${magictier_peers}" ]; then
+        PEER_COUNT="$(printf '%s' "${magictier_peers}" | awk -F',' '{print NF}')"
+        log_user "Peer 节点：已配置 ${PEER_COUNT} 个"
+    else
+        log_user "Peer 节点：未配置，等待其他节点主动连接"
+    fi
+    if [ -n "${magictier_proxy_networks}" ]; then
+        PROXY_DISPLAY="$(printf '%s' "${magictier_proxy_networks}" | sed 's/,/, /g')"
+        log_user "发布子网：${PROXY_DISPLAY}"
+    fi
 
     set -- "${BIN}" --console-log-level warn --file-log-level off
     [ -z "${magictier_hostname}" ] || set -- "$@" --hostname "${magictier_hostname}"
@@ -125,22 +155,24 @@ start_service() {
     [ -z "${magictier_listeners}" ] || set -- "$@" --listeners "${magictier_listeners}"
     [ -z "${magictier_proxy_networks}" ] || set -- "$@" --proxy-networks "${magictier_proxy_networks}"
 
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 启动MagicTier" >> "${LOGFILE}"
     if command -v nice >/dev/null 2>&1; then
-        nice -n 5 "$@" >> "${LOGFILE}" 2>&1 &
+        MAGICTIER_USER_EVENT_LOG="${LOGFILE}" nice -n 5 "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
     else
-        "$@" >> "${LOGFILE}" 2>&1 &
+        MAGICTIER_USER_EVENT_LOG="${LOGFILE}" "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
     fi
     echo $! > "${PIDFILE}"
     sleep 2
 
     if ! is_running; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] MagicTier启动失败，已停止自动运行。" >> "${LOGFILE}"
+        log_user "✗ MagicTier启动失败，已停止自动运行。"
         dbus set magictier_enable="0"
         rm -f "${PIDFILE}"
+        trim_logs
         return 1
     fi
 
+    log_user "核心程序已启动，正在建立组网连接..."
+    trim_logs
     start_monitor
     return 0
 }
@@ -174,6 +206,7 @@ case "${ACTION}" in
         dbus set magictier_enable="0"
         magictier_enable="0"
         stop_service
+        log_user "MagicTier已停止。"
         exit $?
         ;;
     restart)
@@ -189,6 +222,7 @@ case "${ACTION}" in
         ;;
     clearlog)
         : > "${LOGFILE}"
+        : > "${INTERNAL_LOGFILE}"
         exit 0
         ;;
 esac
@@ -199,6 +233,7 @@ case "$2" in
             start_service
         else
             stop_service
+            log_user "MagicTier已停止。"
         fi
         http_response "$1"
         ;;
@@ -212,6 +247,7 @@ case "$2" in
         dbus set magictier_enable="0"
         magictier_enable="0"
         stop_service
+        log_user "MagicTier已停止。"
         http_response "$1"
         ;;
     4)
@@ -223,6 +259,7 @@ case "$2" in
         ;;
     5)
         : > "${LOGFILE}"
+        : > "${INTERNAL_LOGFILE}"
         http_response "$1"
         ;;
     6)
