@@ -133,6 +133,20 @@ jobs:
           if (fields.magictier_listeners.value !== 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010') throw new Error('listeners round-trip failed');
           if (fields.magictier_peers.value !== 'reality://1.2.3.4:443,tcp://5.6.7.8:11010') throw new Error('peers round-trip failed');
           if (fields.magictier_proxy_networks.value !== '192.168.50.0/24,10.8.0.0/24') throw new Error('proxy networks round-trip failed');
+          fields.magictier_network_secret.value = '';
+          fields.magictier_listeners.value = '';
+          fields.magictier_peers.value = '';
+          fields.magictier_proxy_networks.value = '';
+          const exportedEmpty = build_config_text();
+          fields.magictier_network_secret.value = 'old-secret';
+          fields.magictier_listeners.value = 'tcp://old:11010';
+          fields.magictier_peers.value = 'tcp://old:11010';
+          fields.magictier_proxy_networks.value = '172.16.0.0/16';
+          if (!import_config_text(exportedEmpty)) throw new Error('empty config cannot be imported');
+          if (fields.magictier_network_secret.value !== '') throw new Error('empty network secret restore failed');
+          if (fields.magictier_listeners.value !== '') throw new Error('empty listeners restore failed');
+          if (fields.magictier_peers.value !== '') throw new Error('empty peers restore failed');
+          if (fields.magictier_proxy_networks.value !== '') throw new Error('empty proxy networks restore failed');
           NODE
 
       - name: Create router packages

@@ -91,14 +91,14 @@ function build_config_text(){
     var peers=split_config_list(E("magictier_peers").value);
     var proxyNetworks=split_config_list(E("magictier_proxy_networks").value);
     var lines=[];
-    if(hostname)lines.push('hostname = "'+config_escape(hostname)+'"');
-    if(instanceName)lines.push('instance_name = "'+config_escape(instanceName)+'"');
-    if(ipv4)lines.push('ipv4 = "'+config_escape(ipv4)+'"');
-    if(listeners.length){
-        var listenerText=[];
-        for(var i=0;i<listeners.length;i++)listenerText.push('"'+config_escape(listeners[i])+'"');
-        lines.push('listeners = [ '+listenerText.join(', ')+' ]');
-    }
+    lines.push('hostname = "'+config_escape(hostname)+'"');
+    lines.push('instance_name = "'+config_escape(instanceName)+'"');
+    lines.push('ipv4 = "'+config_escape(ipv4)+'"');
+    var listenerText=[];
+    for(var i=0;i<listeners.length;i++)listenerText.push('"'+config_escape(listeners[i])+'"');
+    lines.push(listeners.length?'listeners = [ '+listenerText.join(', ')+' ]':'listeners = []');
+    if(!peers.length)lines.push('peer = []');
+    if(!proxyNetworks.length)lines.push('proxy_network = []');
     lines.push("");
     lines.push("[network_identity]");
     lines.push('network_name = "'+config_escape(networkName)+'"');
@@ -172,29 +172,34 @@ function import_config_text(text){
     var lines=(text||"").replace(/\r/g,"").split("\n");
     var section="", peers=[], proxy=[], listeners=[];
     var data={hostname:"",instance_name:"",network_name:"",network_secret:"",ipv4:""};
+    var seen={hostname:false,instance_name:false,network_name:false,network_secret:false,ipv4:false,listeners:false,peers:false,proxy:false};
     for(var i=0;i<lines.length;i++){
         var line=lines[i].replace(/^\s+|\s+$/g,"");
         if(!line||line.charAt(0)==="#")continue;
         if(line==="[network_identity]"){section="network_identity";continue;}
-        if(line==="[[peer]]"){section="peer";continue;}
-        if(line==="[[proxy_network]]"){section="proxy_network";continue;}
+        if(line==="[[peer]]"){section="peer";seen.peers=true;continue;}
+        if(line==="[[proxy_network]]"){section="proxy_network";seen.proxy=true;continue;}
         if(line.charAt(0)==="["){section="";continue;}
         var key=line.split("=",1)[0].replace(/^\s+|\s+$/g,"");
         var val=toml_value(line);
-        if(section==="network_identity"&&(key==="network_name"||key==="network_secret"))data[key]=val;
+        if(section==="network_identity"&&(key==="network_name"||key==="network_secret")){data[key]=val;seen[key]=true;}
         else if(section==="peer"&&key==="uri"&&val)peers.push(val);
         else if(section==="proxy_network"&&key==="cidr"&&val)proxy.push(val);
         else if(!section&&key==="listeners"){
+            seen.listeners=true;
             var m=line.match(/\[(.*)\]/);
             if(m&&m[1])m[1].split(",").forEach(function(x){x=x.replace(/^\s+|\s+$/g,"");if(x.length>=2&&x.charAt(0)==='"'&&x.charAt(x.length-1)==='"')listeners.push(config_unescape(x.substring(1,x.length-1)));});
         }
-        else if(!section&&(key==="hostname"||key==="instance_name"||key==="ipv4"))data[key]=val;
+        else if(!section&&key==="peer"&&/^peer\s*=\s*\[\s*\]$/.test(line))seen.peers=true;
+        else if(!section&&key==="proxy_network"&&/^proxy_network\s*=\s*\[\s*\]$/.test(line))seen.proxy=true;
+        else if(!section&&(key==="hostname"||key==="instance_name"||key==="ipv4")){data[key]=val;seen[key]=true;}
     }
-    if(!data.network_name&&!data.network_secret&&!data.ipv4&&!data.hostname&&!data.instance_name&&!peers.length&&!proxy.length&&!listeners.length){alert("未识别到有效的 MagicTier 配置，请检查格式。");return false;}
-    ["hostname","instance_name","network_name","network_secret","ipv4"].forEach(function(k){if(data[k]!=="")E("magictier_"+k).value=data[k];});
-    if(peers.length)E("magictier_peers").value=peers.join(",");
-    if(listeners.length)E("magictier_listeners").value=listeners.join(",");
-    if(proxy.length)E("magictier_proxy_networks").value=proxy.join(",");
+    var recognized=seen.hostname||seen.instance_name||seen.network_name||seen.network_secret||seen.ipv4||seen.listeners||seen.peers||seen.proxy;
+    if(!recognized){alert("未识别到有效的 MagicTier 配置，请检查格式。");return false;}
+    ["hostname","instance_name","network_name","network_secret","ipv4"].forEach(function(k){if(seen[k])E("magictier_"+k).value=data[k];});
+    if(seen.peers)E("magictier_peers").value=peers.join(",");
+    if(seen.listeners)E("magictier_listeners").value=listeners.join(",");
+    if(seen.proxy)E("magictier_proxy_networks").value=proxy.join(",");
     alert("配置已导入到页面，请检查后点击“保存并应用”。");
     return true;
 }
