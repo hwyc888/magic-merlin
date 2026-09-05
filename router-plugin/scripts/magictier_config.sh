@@ -136,40 +136,78 @@ print_status() {
     fi
 }
 
-case "$1" in
+ACTION="$1"
+
+case "${ACTION}" in
     start)
         dbus set magictier_enable="1"
         magictier_enable="1"
         start_service
+        exit $?
         ;;
     stop)
         dbus set magictier_enable="0"
         magictier_enable="0"
         stop_service
+        exit $?
         ;;
     restart)
         dbus set magictier_enable="1"
         magictier_enable="1"
         stop_service
         start_service
+        exit $?
         ;;
-    status|2)
+    status)
         print_status
+        exit $?
         ;;
-    log|3)
-        trim_log
-        tail -n 200 "${LOGFILE}" 2>/dev/null
-        ;;
-    clearlog|4)
+    clearlog)
         : > "${LOGFILE}"
-        echo "日志已清空"
+        exit 0
         ;;
+esac
+
+case "$2" in
     1)
-        http_response "$1"
         if [ "${magictier_enable}" = "1" ]; then
             start_service
         else
             stop_service
+        fi
+        http_response "$1"
+        ;;
+    2)
+        dbus set magictier_enable="1"
+        magictier_enable="1"
+        start_service
+        http_response "$1"
+        ;;
+    3)
+        dbus set magictier_enable="0"
+        magictier_enable="0"
+        stop_service
+        http_response "$1"
+        ;;
+    4)
+        dbus set magictier_enable="1"
+        magictier_enable="1"
+        stop_service
+        start_service
+        http_response "$1"
+        ;;
+    5)
+        : > "${LOGFILE}"
+        http_response "$1"
+        ;;
+    6)
+        if is_running; then
+            PID="$(cat "${PIDFILE}")"
+            RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"
+            [ -n "${RSS}" ] || RSS=0
+            http_response "{\"state\":\"running\",\"pid\":${PID},\"rss_kb\":${RSS}}"
+        else
+            http_response '{"state":"stopped","pid":0,"rss_kb":0}'
         fi
         ;;
     *)

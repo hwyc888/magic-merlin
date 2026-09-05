@@ -45,13 +45,13 @@ function save(){
     api("magictier_config.sh",[1],db_magictier,function(){setTimeout(function(){location.reload();},2200);});
 }
 function service_action(action){
-    var p=action=="start"?["start"]:action=="stop"?["stop"]:["restart"];
-    api("magictier_config.sh",p,{},function(){setTimeout(refresh_status,1200);show_log();});
+    var code=action=="start"?2:action=="stop"?3:4;
+    api("magictier_config.sh",[code],{},function(){setTimeout(refresh_status,1200);show_log();});
 }
 function refresh_status(){
-    api("magictier_config.sh",[2],{},function(xhr){
-        var t=(xhr.responseText||"").replace(/^\s+|\s+$/g,"");
-        var m=t.match(/(running|stopped)\|(\d+)\|(\d+)/);
+    api("magictier_config.sh",[6],{},function(xhr){
+        var t=xhr.responseText||"";
+        var m=t.match(/\"state\"\s*:\s*\"(running|stopped)\"[^}]*\"pid\"\s*:\s*(\d+)[^}]*\"rss_kb\"\s*:\s*(\d+)/);
         if(m){
             E("run_state").innerHTML=m[1]=="running"?"运行中":"已停止";
             E("run_pid").innerHTML=m[2];
@@ -64,9 +64,9 @@ function show_log(){
 }
 function hide_log(){E("magictier_log_mask").style.display="none";E("magictier_log_box").style.display="none";}
 function load_log(){
-    api("magictier_config.sh",[3],{},function(xhr){E("magictier_log_text").value=xhr.responseText||"";E("magictier_log_text").scrollTop=E("magictier_log_text").scrollHeight;});
+    $.ajax({url:"/_temp/magictier_log.txt?_="+new Date().getTime(),type:"GET",cache:false,dataType:"text",success:function(t){E("magictier_log_text").value=t||"";E("magictier_log_text").scrollTop=E("magictier_log_text").scrollHeight;},error:function(){E("magictier_log_text").value="暂无日志";}});
 }
-function clear_log(){api("magictier_config.sh",[4],{},function(){load_log();});}
+function clear_log(){api("magictier_config.sh",[5],{},function(){setTimeout(load_log,200);});}
 function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 </script>
 </head>
