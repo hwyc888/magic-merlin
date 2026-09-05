@@ -97,7 +97,10 @@ install_now() {
     if [ -z "${LOG_MAX_CURRENT}" ] || [ "${LOG_MAX_CURRENT}" = "524288" ]; then
         dbus set magictier_log_max_bytes="131072"
     fi
-    [ -n "$(dbus get magictier_rss_limit_kb 2>/dev/null)" ] || dbus set magictier_rss_limit_kb="262144"
+    RSS_LIMIT_CURRENT="$(dbus get magictier_rss_limit_kb 2>/dev/null)"
+    if [ -z "${RSS_LIMIT_CURRENT}" ] || [ "${RSS_LIMIT_CURRENT}" = "262144" ]; then
+        dbus set magictier_rss_limit_kb="65536"
+    fi
 
     dbus set magictier_version="${PLVER}"
     dbus set softcenter_module_magictier_version="${PLVER}"

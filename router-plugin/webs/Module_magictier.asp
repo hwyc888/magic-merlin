@@ -242,6 +242,6 @@ function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 <tr><th>监听地址</th><td><input id="magictier_listeners" class="input_ss_table" style="width:420px" maxlength="1024" placeholder="tcp://0.0.0.0:11010,udp://0.0.0.0:11010" /></td></tr>
 <tr><th>发布子网</th><td><input id="magictier_proxy_networks" class="input_ss_table" style="width:420px" maxlength="512" placeholder="192.168.50.0/24" /></td></tr></table>
 <div style="margin-top:15px;text-align:center;"><input class="button_gen" type="button" onclick="save();" value="保存并应用" /></div>
-<div style="margin:15px 0 5px 0;" class="formfontdesc">7×24保护：用户组网日志上限约 128KB，内部诊断日志上限约 64KB；默认 RSS 超过 256MB 自动停服并关闭自动启动；进程以较低 CPU 优先级运行。</div>
+<div style="margin:15px 0 5px 0;" class="formfontdesc">7×24保护：用户组网日志上限约 128KB，内部诊断日志上限约 64KB；默认 RSS 超过 64MB，最长约 20 秒内自动停服并关闭自动启动；进程以较低 CPU 优先级运行。</div>
 </td></tr></table></td></tr></table></td></tr></table><div id="footer"></div>
 </body></html>

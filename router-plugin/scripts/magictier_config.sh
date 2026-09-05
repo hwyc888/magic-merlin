@@ -13,7 +13,7 @@ LOG_MAX_BYTES="${magictier_log_max_bytes:-131072}"
 LOG_KEEP_BYTES="65536"
 INTERNAL_LOG_MAX_BYTES="65536"
 INTERNAL_LOG_KEEP_BYTES="32768"
-RSS_LIMIT_KB="${magictier_rss_limit_kb:-262144}"
+RSS_LIMIT_KB="${magictier_rss_limit_kb:-65536}"
 LOCK_DIR="/tmp/magictier_config.lock"
 
 mkdir -p /tmp/upload
@@ -99,7 +99,7 @@ start_monitor() {
     stop_monitor
     (
         while :; do
-            sleep 60
+            sleep 20
             [ -f "${PIDFILE}" ] || exit 0
             PID="$(cat "${PIDFILE}" 2>/dev/null)"
             pid_is_core "${PID}" || exit 0

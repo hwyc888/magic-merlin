@@ -101,8 +101,11 @@ jobs:
           grep -q 'magictier_internal.log' router-plugin/scripts/magictier_config.sh
           grep -q '组网状态日志' router-plugin/webs/Module_magictier.asp
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
-          test "$(cat router-plugin/version)" = "1.0.4"
-          grep -q '"version": "1.0.4"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.0.5"
+          grep -q '"version": "1.0.5"' router-plugin/config.json.js
+          grep -q 'RSS_LIMIT_KB="${magictier_rss_limit_kb:-65536}"' router-plugin/scripts/magictier_config.sh
+          grep -q 'sleep 20' router-plugin/scripts/magictier_config.sh
+          grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
           node <<'NODE'
           const fs = require('fs');
           const html = fs.readFileSync('router-plugin/webs/Module_magictier.asp', 'utf8');
