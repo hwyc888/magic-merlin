@@ -127,6 +127,7 @@ start_monitor() {
     stop_monitor
     (
         LAST_WAN_IP="$(get_wan_ipv4 2>/dev/null)"
+        WAN_WAS_DOWN=0
         while :; do
             sleep 20
             [ -f "${PIDFILE}" ] || exit 0
@@ -135,9 +136,18 @@ start_monitor() {
             trim_logs
 
             CURRENT_WAN_IP="$(get_wan_ipv4 2>/dev/null)"
-            if [ -n "${CURRENT_WAN_IP}" ]; then
-                if [ -n "${LAST_WAN_IP}" ] && [ "${CURRENT_WAN_IP}" != "${LAST_WAN_IP}" ]; then
+            if [ -z "${CURRENT_WAN_IP}" ]; then
+                [ -z "${LAST_WAN_IP}" ] || WAN_WAS_DOWN=1
+            else
+                WAN_REBUILD=0
+                if [ "${WAN_WAS_DOWN}" = "1" ]; then
+                    log_user "⚠ 检测到 WAN 连接恢复，当前地址：${CURRENT_WAN_IP}。"
+                    WAN_REBUILD=1
+                elif [ -n "${LAST_WAN_IP}" ] && [ "${CURRENT_WAN_IP}" != "${LAST_WAN_IP}" ]; then
                     log_user "⚠ 检测到 WAN 地址变化：${LAST_WAN_IP} → ${CURRENT_WAN_IP}。"
+                    WAN_REBUILD=1
+                fi
+                if [ "${WAN_REBUILD}" = "1" ]; then
                     log_user "正在重建 MagicTier 组网连接，不会重启路由器。"
                     kill "${PID}" 2>/dev/null
                     sleep 2
@@ -147,6 +157,7 @@ start_monitor() {
                     exit 0
                 fi
                 LAST_WAN_IP="${CURRENT_WAN_IP}"
+                WAN_WAS_DOWN=0
             fi
 
             RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"

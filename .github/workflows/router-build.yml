@@ -125,6 +125,8 @@ jobs:
           grep -q 'RSS_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
           grep -q 'get_wan_ipv4' router-plugin/scripts/magic_config.sh
           grep -q 'WAN 地址变化' router-plugin/scripts/magic_config.sh
+          grep -q 'WAN 连接恢复' router-plugin/scripts/magic_config.sh
+          grep -q 'WAN_WAS_DOWN=0' router-plugin/scripts/magic_config.sh
           grep -q 'sh /koolshare/scripts/magic_config.sh boot' router-plugin/scripts/magic_config.sh
           grep -q 'is_init_invocation' router-plugin/scripts/magic_config.sh
           grep -q '/koolshare/init.d/S97magic.sh' router-plugin/install.sh
