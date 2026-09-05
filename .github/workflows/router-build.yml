@@ -90,12 +90,48 @@ jobs:
           grep -q 'armv7l' router-plugin/install.sh
           grep -q 'import_from_clipboard' router-plugin/webs/Module_magictier.asp
           grep -q 'import_config_text' router-plugin/webs/Module_magictier.asp
+          grep -q 'show_config' router-plugin/webs/Module_magictier.asp
+          grep -q 'download_config_text' router-plugin/webs/Module_magictier.asp
+          grep -q 'OLD_NETWORK_SECRET' router-plugin/install.sh
+          grep -q '升级后将原样保留' router-plugin/install.sh
+          ! grep -q 'dbus remove magictier' router-plugin/install.sh
           grep -q -- '--hostname' router-plugin/scripts/magictier_config.sh
           grep -q -- '--instance-name' router-plugin/scripts/magictier_config.sh
           grep -q 'MAGICTIER_USER_EVENT_LOG' router-plugin/scripts/magictier_config.sh
           grep -q 'magictier_internal.log' router-plugin/scripts/magictier_config.sh
           grep -q '组网状态日志' router-plugin/webs/Module_magictier.asp
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
+          test "$(cat router-plugin/version)" = "1.0.4"
+          grep -q '"version": "1.0.4"' router-plugin/config.json.js
+          node <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('router-plugin/webs/Module_magictier.asp', 'utf8');
+          const scripts = [...html.matchAll(/<script type="text\/javascript">([\s\S]*?)<\/script>/g)];
+          const app = scripts.map(x => x[1]).find(x => x.includes('var db_magictier'));
+          if (!app) throw new Error('MagicTier inline JavaScript not found');
+          const fields = {
+            magictier_hostname: {value: 'router-a'},
+            magictier_instance_name: {value: 'default'},
+            magictier_network_name: {value: 'company_vpn'},
+            magictier_network_secret: {value: 'secret-1'},
+            magictier_ipv4: {value: '10.126.126.50/24'},
+            magictier_listeners: {value: 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010'},
+            magictier_peers: {value: 'reality://1.2.3.4:443,tcp://5.6.7.8:11010'},
+            magictier_proxy_networks: {value: '192.168.50.0/24,10.8.0.0/24'}
+          };
+          global.document = {getElementById: id => fields[id] || {}};
+          global.navigator = {};
+          global.window = {};
+          global.alert = () => {};
+          eval(app);
+          const exported = build_config_text();
+          Object.values(fields).forEach(x => x.value = '');
+          if (!import_config_text(exported)) throw new Error('exported config cannot be imported');
+          if (fields.magictier_network_name.value !== 'company_vpn') throw new Error('network name round-trip failed');
+          if (fields.magictier_listeners.value !== 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010') throw new Error('listeners round-trip failed');
+          if (fields.magictier_peers.value !== 'reality://1.2.3.4:443,tcp://5.6.7.8:11010') throw new Error('peers round-trip failed');
+          if (fields.magictier_proxy_networks.value !== '192.168.50.0/24,10.8.0.0/24') throw new Error('proxy networks round-trip failed');
+          NODE
 
       - name: Create router packages
         run: |
