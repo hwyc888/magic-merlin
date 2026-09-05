@@ -11,8 +11,26 @@ LOGFILE="/tmp/upload/magictier_log.txt"
 LOG_MAX_BYTES="${magictier_log_max_bytes:-524288}"
 LOG_KEEP_BYTES="262144"
 RSS_LIMIT_KB="${magictier_rss_limit_kb:-262144}"
+LOCK_DIR="/tmp/magictier_config.lock"
 
 mkdir -p /tmp/upload
+
+acquire_lock() {
+    if mkdir "${LOCK_DIR}" >/dev/null 2>&1; then
+        echo "$$" > "${LOCK_DIR}/pid" 2>/dev/null
+        trap 'rm -rf "${LOCK_DIR}" >/dev/null 2>&1' EXIT
+        return 0
+    fi
+    return 1
+}
+
+lock_or_exit() {
+    acquire_lock && return 0
+    if [ -n "$2" ]; then
+        http_response '{"ok":0,"msg":"busy"}'
+    fi
+    exit 0
+}
 
 pid_is_core() {
     [ -n "$1" ] || return 1
@@ -137,6 +155,11 @@ print_status() {
 }
 
 ACTION="$1"
+
+case "${ACTION}:$2" in
+    status:*|*:6) ;;
+    *) lock_or_exit "$@" ;;
+esac
 
 case "${ACTION}" in
     start)
