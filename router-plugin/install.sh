@@ -68,7 +68,7 @@ install_now() {
     cp -f "${DIR}/webs/Module_magictier.asp" /koolshare/webs/Module_magictier.asp
     cp -f "${DIR}/uninstall.sh" /koolshare/scripts/uninstall_magictier.sh
     cp -f "${DIR}/version" /koolshare/magictier/version
-    [ ! -f "${DIR}/res/icon-magictier.png" ] || cp -f "${DIR}/res/icon-magictier.png" /koolshare/res/icon-magictier.png
+    [ ! -f "${DIR}/res/magictier.png" ] || cp -f "${DIR}/res/magictier.png" /koolshare/res/icon-magictier.png
 
     chmod 0755 /koolshare/bin/magictier-core
     chmod 0755 /koolshare/scripts/magictier_config.sh /koolshare/scripts/magictier_health.sh /koolshare/scripts/uninstall_magictier.sh
