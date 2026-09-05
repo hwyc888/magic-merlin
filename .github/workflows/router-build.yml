@@ -44,12 +44,12 @@ jobs:
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: |
-          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin magictier-core
+          cargo zigbuild --profile router --target aarch64-unknown-linux-musl --bin magictier-core
 
       - name: Verify router binary
         run: |
           set -eux
-          CORE=magictier/target/aarch64-unknown-linux-musl/release/magictier-core
+          CORE=magictier/target/aarch64-unknown-linux-musl/router/magictier-core
           test -x "$CORE"
           file "$CORE"
           ls -lh "$CORE"
@@ -91,8 +91,8 @@ jobs:
           cp -a router-plugin/. DIST/RT-AX86U/magictier/
           mkdir -p DIST/TUF-BE3600-V2/magictier/bin DIST/RT-AX86U/magictier/bin
 
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/TUF-BE3600-V2/magictier/bin/
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/RT-AX86U/magictier/bin/
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/router/magictier-core DIST/TUF-BE3600-V2/magictier/bin/
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/router/magictier-core DIST/RT-AX86U/magictier/bin/
 
           chmod 0755 DIST/*/magictier/install.sh DIST/*/magictier/uninstall.sh DIST/*/magictier/scripts/magictier_config.sh DIST/*/magictier/scripts/magictier_health.sh
           printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2' > DIST/TUF-BE3600-V2/magictier/target-model.txt
