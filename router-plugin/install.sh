@@ -4,6 +4,8 @@ source /koolshare/scripts/base.sh
 
 module="magictier"
 DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="/koolshare/magic"
+OWNER_MARKER="${INSTALL_DIR}/.magictier-owned"
 TITLE="MagicTier"
 DESCR="MagicTier ARMv7/ARM64 mesh networking"
 PLVER="$(cat "${DIR}/version" 2>/dev/null || echo 1.0.0)"
@@ -38,6 +40,14 @@ platform_test() {
     }
 }
 
+install_dir_test() {
+    if [ -d "${INSTALL_DIR}" ] && [ ! -f "${OWNER_MARKER}" ]; then
+        echo_date "检测到安装目录 ${INSTALL_DIR} 已存在，可能被其他插件或程序使用。"
+        echo_date "为避免覆盖现有数据，本次安装已取消。请先检查并处理该目录后再安装。"
+        exit 1
+    fi
+}
+
 install_now() {
     IS_UPGRADE=0
     if [ "$(dbus get softcenter_module_magictier_install 2>/dev/null)" = "1" ] || [ -n "$(dbus get magictier_version 2>/dev/null)" ]; then
@@ -60,14 +70,15 @@ install_now() {
     fi
 
     echo_date "安装MagicTier插件文件..."
-    mkdir -p /koolshare/bin /koolshare/scripts /koolshare/webs /koolshare/res /koolshare/init.d /koolshare/magictier
+    mkdir -p /koolshare/bin /koolshare/scripts /koolshare/webs /koolshare/res /koolshare/init.d "${INSTALL_DIR}"
 
     cp -f "${DIR}/bin/magictier-core" /koolshare/bin/magictier-core
     cp -f "${DIR}/scripts/magictier_config.sh" /koolshare/scripts/magictier_config.sh
     cp -f "${DIR}/scripts/magictier_health.sh" /koolshare/scripts/magictier_health.sh
     cp -f "${DIR}/webs/Module_magictier.asp" /koolshare/webs/Module_magictier.asp
     cp -f "${DIR}/uninstall.sh" /koolshare/scripts/uninstall_magictier.sh
-    cp -f "${DIR}/version" /koolshare/magictier/version
+    cp -f "${DIR}/version" "${INSTALL_DIR}/version"
+    printf '%s\n' 'magictier' > "${OWNER_MARKER}"
     [ ! -f "${DIR}/res/magictier.png" ] || cp -f "${DIR}/res/magictier.png" /koolshare/res/icon-magictier.png
 
     chmod 0755 /koolshare/bin/magictier-core
@@ -119,5 +130,6 @@ install_now() {
 
 get_model
 platform_test
+install_dir_test
 install_now
 exit 0

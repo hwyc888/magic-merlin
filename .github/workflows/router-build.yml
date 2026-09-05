@@ -101,8 +101,13 @@ jobs:
           grep -q 'magictier_internal.log' router-plugin/scripts/magictier_config.sh
           grep -q '组网状态日志' router-plugin/webs/Module_magictier.asp
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
-          test "$(cat router-plugin/version)" = "1.0.7"
-          grep -q '"version": "1.0.7"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.0.8"
+          grep -q '"version": "1.0.8"' router-plugin/config.json.js
+          grep -q 'INSTALL_DIR="/koolshare/magic"' router-plugin/install.sh
+          grep -q 'OWNER_MARKER="${INSTALL_DIR}/.magictier-owned"' router-plugin/install.sh
+          grep -q '本次安装已取消' router-plugin/install.sh
+          ! grep -q '/koolshare/magictier' router-plugin/install.sh
+          ! grep -q '/koolshare/magictier' router-plugin/uninstall.sh
           test -s router-plugin/res/magictier.png
           file router-plugin/res/magictier.png | grep -q 'PNG image data'
           grep -q 'res/magictier.png' router-plugin/install.sh
