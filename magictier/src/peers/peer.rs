@@ -30,6 +30,7 @@ type ConnMap = Arc<DashMap<PeerConnId, ArcPeerConn>>;
 const DEFAULT_CONN_REEVALUATE_SECS: u64 = 30;
 const DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000;
 const DEFAULT_CONN_MAX_LATENCY_PERCENT: u64 = 80;
+const DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD: u64 = 4 * 1024;
 
 fn should_switch_default_conn(current_latency_us: u64, candidate_latency_us: u64) -> bool {
     if current_latency_us == 0
@@ -148,8 +149,10 @@ impl Peer {
                     continue;
                 }
 
-                let current_path_active = current_stats.tx_bytes > last_sample_tx_bytes
-                    || current_stats.rx_bytes > last_sample_rx_bytes;
+                let tx_delta = current_stats.tx_bytes.saturating_sub(last_sample_tx_bytes);
+                let rx_delta = current_stats.rx_bytes.saturating_sub(last_sample_rx_bytes);
+                let current_path_active = tx_delta.saturating_add(rx_delta)
+                    >= DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD;
                 last_sample_tx_bytes = current_stats.tx_bytes;
                 last_sample_rx_bytes = current_stats.rx_bytes;
                 if current_path_active {

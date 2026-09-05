@@ -194,6 +194,7 @@ jobs:
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
           grep -q 'DEFAULT_CONN_REEVALUATE_SECS: u64 = 30' magictier/src/peers/peer.rs
           grep -q 'DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000' magictier/src/peers/peer.rs
+          grep -q 'DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD: u64 = 4 \* 1024' magictier/src/peers/peer.rs
           grep -q 'current_path_active' magictier/src/peers/peer.rs
           test "$(cat router-plugin/version)" = "1.2.0"
           grep -q '"version": "1.2.0"' router-plugin/config.json.js
