@@ -144,6 +144,7 @@ start_service() {
         PROXY_DISPLAY="$(printf '%s' "${magictier_proxy_networks}" | sed 's/,/, /g')"
         log_user "发布子网：${PROXY_DISPLAY}"
     fi
+    log_user "正在建立组网连接..."
 
     set -- "${BIN}" --console-log-level warn --file-log-level off
     [ -z "${magictier_hostname}" ] || set -- "$@" --hostname "${magictier_hostname}"
@@ -171,7 +172,6 @@ start_service() {
         return 1
     fi
 
-    log_user "核心程序已启动，正在建立组网连接..."
     trim_logs
     start_monitor
     return 0
