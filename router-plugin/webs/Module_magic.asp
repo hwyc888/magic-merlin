@@ -204,10 +204,23 @@ function import_config_text(text){
     return true;
 }
 function import_from_textarea(){if(import_config_text(E("magic_import_text").value))hide_import();}
-function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
+function unloadPage(){
+    if(statusTimer){clearInterval(statusTimer);statusTimer=null;}
+}
+function reload_Soft_Center(){
+    unloadPage();
+    var target="/Module_Softcenter.asp#/";
+    try{
+        if(window.top&&window.top!==window)window.top.location.replace(target);
+        else window.location.replace(target);
+    }catch(e){
+        window.location.href=target;
+    }
+    return false;
+}
 </script>
 </head>
-<body onload="init();">
+<body onload="init();" onunload="unloadPage();">
 <div id="TopBanner"></div><div id="Loading" class="popup_bg"></div>
 <div id="magic_log_mask" onclick="hide_log();"></div>
 <div id="magic_log_box"><div style="color:#fff;font-size:16px;margin-bottom:4px;">MagicTier 组网状态日志</div><div style="color:#cfd8dc;font-size:12px;margin-bottom:8px;">仅显示网络名称、连接结果和需要用户处理的信息。</div><textarea id="magic_log_text" readonly="readonly"></textarea><div style="text-align:center;margin-top:10px;"><input class="button_gen" type="button" onclick="load_log();" value="刷新" />&nbsp;<input class="button_gen" type="button" onclick="clear_log();" value="清空日志" />&nbsp;<input class="button_gen" type="button" onclick="hide_log();" value="关闭" /></div></div>
@@ -217,7 +230,7 @@ function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 <div id="magic_export_box"><div style="color:#fff;font-size:16px;margin-bottom:4px;">MagicTier 当前页面配置</div><div style="color:#ffd54f;font-size:12px;margin-bottom:8px;">注意：文本包含网络密钥；如页面有未保存修改，查看和导出的内容也会包含这些修改，请妥善保管。</div><textarea id="magic_export_text" readonly="readonly"></textarea><div style="text-align:center;margin-top:10px;"><input class="button_gen" type="button" onclick="copy_config_text();" value="复制文本" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出 TXT" />&nbsp;<input class="button_gen" type="button" onclick="hide_config();" value="关闭" /></div></div>
 <table class="content" align="center" cellpadding="0" cellspacing="0"><tr><td width="17">&nbsp;</td><td valign="top" width="202"><div id="mainMenu"></div><div id="subMenu"></div></td><td valign="top"><div id="tabMenu" class="submenuBlock"></div>
 <table width="98%" border="0" align="left" cellpadding="0" cellspacing="0"><tr><td align="left" valign="top"><table width="760px" border="0" cellpadding="5" cellspacing="0" class="FormTitle"><tr><td bgcolor="#4D595D" colspan="3" valign="top">
-<div>&nbsp;</div><div style="float:left;display:flex;align-items:center;" class="formfonttitle"><img src="/res/icon-magic.png" alt="MagicTier Magic" style="width:32px;height:32px;margin-right:8px;" />MagicTier Magic</div><div style="float:right;width:15px;height:25px;margin-top:10px"><img onclick="reload_Soft_Center();" align="right" style="cursor:pointer;position:absolute;margin-left:-30px;margin-top:-25px;" title="返回软件中心" src="/images/backprev.png" /></div><div style="margin:38px 0 10px 5px;" class="splitLine"></div>
+<div>&nbsp;</div><div style="float:left;display:flex;align-items:center;" class="formfonttitle"><img src="/res/icon-magic.png" alt="MagicTier Magic" style="width:32px;height:32px;margin-right:8px;" />MagicTier Magic</div><div style="float:right;width:15px;height:25px;margin-top:10px"><a href="/Module_Softcenter.asp#/" target="_top" onclick="return reload_Soft_Center();" title="返回软件中心"><img align="right" style="cursor:pointer;position:absolute;margin-left:-30px;margin-top:-25px;" alt="返回软件中心" src="/images/backprev.png" onmouseover="this.src='/images/backprevclick.png'" onmouseout="this.src='/images/backprev.png'" /></a></div><div style="margin:38px 0 10px 5px;" class="splitLine"></div>
 <div class="formfontdesc">MagicTier Magic 独立组网插件（与原 magictier 插件分离）。当前版本：<span id="magic_version">-</span></div>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行状态</td></tr></thead>
 <tr><th>状态</th><td><span id="run_state">检测中</span>　PID: <span id="run_pid">-</span>　RSS: <span id="run_rss">-</span></td></tr>
