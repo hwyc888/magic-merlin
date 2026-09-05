@@ -2,22 +2,22 @@
 
 source /koolshare/scripts/base.sh
 
-eval "$(dbus export magictier 2>/dev/null)"
+eval "$(dbus export magic 2>/dev/null)"
 
-BIN="/koolshare/bin/magictier-core"
-PIDFILE="/var/run/magictier.pid"
-MONITOR_PIDFILE="/var/run/magictier-monitor.pid"
-LOGFILE="/tmp/upload/magictier_log.txt"
-INTERNAL_LOGFILE="/tmp/upload/magictier_internal.log"
-LOG_MAX_BYTES="${magictier_log_max_bytes:-131072}"
+BIN="/koolshare/bin/magic-core"
+PIDFILE="/var/run/magic.pid"
+MONITOR_PIDFILE="/var/run/magic-monitor.pid"
+LOGFILE="/tmp/upload/magic_log.txt"
+INTERNAL_LOGFILE="/tmp/upload/magic_internal.log"
+LOG_MAX_BYTES="${magic_log_max_bytes:-131072}"
 LOG_KEEP_BYTES="65536"
 INTERNAL_LOG_MAX_BYTES="65536"
 INTERNAL_LOG_KEEP_BYTES="32768"
-RSS_LIMIT_KB="${magictier_rss_limit_kb:-65536}"
-RSS_RESTART_STATE="/tmp/magictier_rss_restart.state"
+RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"
+RSS_RESTART_STATE="/tmp/magic_rss_restart.state"
 RSS_RESTART_WINDOW=600
 RSS_RESTART_MAX=3
-LOCK_DIR="/tmp/magictier_config.lock"
+LOCK_DIR="/tmp/magic_config.lock"
 
 mkdir -p /tmp/upload
 
@@ -41,7 +41,7 @@ lock_or_exit() {
 pid_is_core() {
     [ -n "$1" ] || return 1
     [ -r "/proc/$1/cmdline" ] || return 1
-    tr '\000' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q '/koolshare/bin/magictier-core'
+    tr '\000' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q '/koolshare/bin/magic-core'
 }
 
 is_running() {
@@ -135,10 +135,10 @@ start_monitor() {
                 if [ "${RESTART_COUNT}" -le "${RSS_RESTART_MAX}" ] 2>/dev/null; then
                     log_user "正在自动重启 MagicTier 核心程序，不会重启路由器。"
                     rm -f "${MONITOR_PIDFILE}"
-                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magictier_config.sh start >/dev/null 2>&1 ) &
+                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh start >/dev/null 2>&1 ) &
                 else
                     log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
-                    dbus set magictier_enable="0"
+                    dbus set magic_enable="0"
                 fi
                 exit 0
             fi
@@ -148,7 +148,7 @@ start_monitor() {
 }
 
 start_service() {
-    [ "${magictier_enable}" = "1" ] || return 0
+    [ "${magic_enable}" = "1" ] || return 0
     [ -x "${BIN}" ] || {
         log_user "✗ MagicTier核心程序不存在，无法启动。"
         return 1
@@ -159,29 +159,29 @@ start_service() {
     : > "${INTERNAL_LOGFILE}"
 
     log_user "正在启动 MagicTier..."
-    [ -z "${magictier_network_name}" ] || log_user "组网名称：${magictier_network_name}"
-    [ -z "${magictier_ipv4}" ] || log_user "虚拟 IP：${magictier_ipv4}"
-    if [ -n "${magictier_peers}" ]; then
-        PEER_COUNT="$(printf '%s' "${magictier_peers}" | awk -F',' '{print NF}')"
+    [ -z "${magic_network_name}" ] || log_user "组网名称：${magic_network_name}"
+    [ -z "${magic_ipv4}" ] || log_user "虚拟 IP：${magic_ipv4}"
+    if [ -n "${magic_peers}" ]; then
+        PEER_COUNT="$(printf '%s' "${magic_peers}" | awk -F',' '{print NF}')"
         log_user "Peer 节点：已配置 ${PEER_COUNT} 个"
     else
         log_user "Peer 节点：未配置，等待其他节点主动连接"
     fi
-    if [ -n "${magictier_proxy_networks}" ]; then
-        PROXY_DISPLAY="$(printf '%s' "${magictier_proxy_networks}" | sed 's/,/, /g')"
+    if [ -n "${magic_proxy_networks}" ]; then
+        PROXY_DISPLAY="$(printf '%s' "${magic_proxy_networks}" | sed 's/,/, /g')"
         log_user "发布子网：${PROXY_DISPLAY}"
     fi
     log_user "正在建立组网连接..."
 
     set -- "${BIN}" --console-log-level warn --file-log-level off
-    [ -z "${magictier_hostname}" ] || set -- "$@" --hostname "${magictier_hostname}"
-    [ -z "${magictier_instance_name}" ] || set -- "$@" --instance-name "${magictier_instance_name}"
-    [ -z "${magictier_network_name}" ] || set -- "$@" --network-name "${magictier_network_name}"
-    [ -z "${magictier_network_secret}" ] || set -- "$@" --network-secret "${magictier_network_secret}"
-    [ -z "${magictier_ipv4}" ] || set -- "$@" --ipv4 "${magictier_ipv4}"
-    [ -z "${magictier_peers}" ] || set -- "$@" --peers "${magictier_peers}"
-    [ -z "${magictier_listeners}" ] || set -- "$@" --listeners "${magictier_listeners}"
-    [ -z "${magictier_proxy_networks}" ] || set -- "$@" --proxy-networks "${magictier_proxy_networks}"
+    [ -z "${magic_hostname}" ] || set -- "$@" --hostname "${magic_hostname}"
+    [ -z "${magic_instance_name}" ] || set -- "$@" --instance-name "${magic_instance_name}"
+    [ -z "${magic_network_name}" ] || set -- "$@" --network-name "${magic_network_name}"
+    [ -z "${magic_network_secret}" ] || set -- "$@" --network-secret "${magic_network_secret}"
+    [ -z "${magic_ipv4}" ] || set -- "$@" --ipv4 "${magic_ipv4}"
+    [ -z "${magic_peers}" ] || set -- "$@" --peers "${magic_peers}"
+    [ -z "${magic_listeners}" ] || set -- "$@" --listeners "${magic_listeners}"
+    [ -z "${magic_proxy_networks}" ] || set -- "$@" --proxy-networks "${magic_proxy_networks}"
 
     if command -v nice >/dev/null 2>&1; then
         MAGICTIER_USER_EVENT_LOG="${LOGFILE}" nice -n 5 "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
@@ -193,7 +193,7 @@ start_service() {
 
     if ! is_running; then
         log_user "✗ MagicTier启动失败，已停止自动运行。"
-        dbus set magictier_enable="0"
+        dbus set magic_enable="0"
         rm -f "${PIDFILE}"
         trim_logs
         return 1
@@ -224,21 +224,21 @@ esac
 
 case "${ACTION}" in
     start)
-        dbus set magictier_enable="1"
-        magictier_enable="1"
+        dbus set magic_enable="1"
+        magic_enable="1"
         start_service
         exit $?
         ;;
     stop)
-        dbus set magictier_enable="0"
-        magictier_enable="0"
+        dbus set magic_enable="0"
+        magic_enable="0"
         stop_service
         log_user "MagicTier已停止。"
         exit $?
         ;;
     restart)
-        dbus set magictier_enable="1"
-        magictier_enable="1"
+        dbus set magic_enable="1"
+        magic_enable="1"
         stop_service
         start_service
         exit $?
@@ -256,7 +256,7 @@ esac
 
 case "$2" in
     1)
-        if [ "${magictier_enable}" = "1" ]; then
+        if [ "${magic_enable}" = "1" ]; then
             start_service
         else
             stop_service
@@ -265,21 +265,21 @@ case "$2" in
         http_response "$1"
         ;;
     2)
-        dbus set magictier_enable="1"
-        magictier_enable="1"
+        dbus set magic_enable="1"
+        magic_enable="1"
         start_service
         http_response "$1"
         ;;
     3)
-        dbus set magictier_enable="0"
-        magictier_enable="0"
+        dbus set magic_enable="0"
+        magic_enable="0"
         stop_service
         log_user "MagicTier已停止。"
         http_response "$1"
         ;;
     4)
-        dbus set magictier_enable="1"
-        magictier_enable="1"
+        dbus set magic_enable="1"
+        magic_enable="1"
         stop_service
         start_service
         http_response "$1"
@@ -300,7 +300,7 @@ case "$2" in
         fi
         ;;
     *)
-        if [ "${magictier_enable}" = "1" ]; then
+        if [ "${magic_enable}" = "1" ]; then
             start_service
         else
             stop_service

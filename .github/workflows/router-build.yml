@@ -74,125 +74,133 @@ jobs:
           test -f router-plugin/uninstall.sh
           test -f router-plugin/.valid
           test -f router-plugin/config.json.js
-          test -f router-plugin/scripts/magictier_config.sh
-          test -f router-plugin/scripts/magictier_health.sh
-          test -f router-plugin/webs/Module_magictier.asp
+          test -f router-plugin/scripts/magic_config.sh
+          test -f router-plugin/scripts/magic_health.sh
+          test -f router-plugin/webs/Module_magic.asp
           grep -qx 'hnd' router-plugin/.valid
           sh -n router-plugin/install.sh
           sh -n router-plugin/uninstall.sh
-          sh -n router-plugin/scripts/magictier_config.sh
-          sh -n router-plugin/scripts/magictier_health.sh
-          ! grep -q 'killall magictier-core' router-plugin/scripts/magictier_config.sh
-          grep -q -- '--console-log-level warn --file-log-level off' router-plugin/scripts/magictier_config.sh
-          grep -q 'magictier_log_max_bytes' router-plugin/scripts/magictier_config.sh
-          grep -q 'magictier_rss_limit_kb' router-plugin/scripts/magictier_config.sh
+          sh -n router-plugin/scripts/magic_config.sh
+          sh -n router-plugin/scripts/magic_health.sh
+          ! grep -q 'killall magictier-core' router-plugin/scripts/magic_config.sh
+          grep -q -- '--console-log-level warn --file-log-level off' router-plugin/scripts/magic_config.sh
+          grep -q 'magic_log_max_bytes' router-plugin/scripts/magic_config.sh
+          grep -q 'magic_rss_limit_kb' router-plugin/scripts/magic_config.sh
           ! grep -q 'magictier-cli' router-plugin/install.sh
           grep -q 'armv7l' router-plugin/install.sh
-          grep -q 'import_from_clipboard' router-plugin/webs/Module_magictier.asp
-          grep -q 'import_config_text' router-plugin/webs/Module_magictier.asp
-          grep -q 'show_config' router-plugin/webs/Module_magictier.asp
-          grep -q 'download_config_text' router-plugin/webs/Module_magictier.asp
+          grep -q 'import_from_clipboard' router-plugin/webs/Module_magic.asp
+          grep -q 'import_config_text' router-plugin/webs/Module_magic.asp
+          grep -q 'show_config' router-plugin/webs/Module_magic.asp
+          grep -q 'download_config_text' router-plugin/webs/Module_magic.asp
           grep -q 'OLD_NETWORK_SECRET' router-plugin/install.sh
           grep -q '升级后将原样保留' router-plugin/install.sh
           ! grep -q 'dbus remove magictier' router-plugin/install.sh
-          grep -q -- '--hostname' router-plugin/scripts/magictier_config.sh
-          grep -q -- '--instance-name' router-plugin/scripts/magictier_config.sh
-          grep -q 'MAGICTIER_USER_EVENT_LOG' router-plugin/scripts/magictier_config.sh
-          grep -q 'magictier_internal.log' router-plugin/scripts/magictier_config.sh
-          grep -q '组网状态日志' router-plugin/webs/Module_magictier.asp
+          grep -q -- '--hostname' router-plugin/scripts/magic_config.sh
+          grep -q -- '--instance-name' router-plugin/scripts/magic_config.sh
+          grep -q 'MAGICTIER_USER_EVENT_LOG' router-plugin/scripts/magic_config.sh
+          grep -q 'magic_internal.log' router-plugin/scripts/magic_config.sh
+          grep -q '组网状态日志' router-plugin/webs/Module_magic.asp
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
-          test "$(cat router-plugin/version)" = "1.0.8"
-          grep -q '"version": "1.0.8"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.1.0"
+          grep -q '"version": "1.1.0"' router-plugin/config.json.js
           grep -q 'INSTALL_DIR="/koolshare/magic"' router-plugin/install.sh
-          grep -q 'OWNER_MARKER="${INSTALL_DIR}/.magictier-owned"' router-plugin/install.sh
+          grep -q 'OWNER_MARKER="${INSTALL_DIR}/.magic-owned"' router-plugin/install.sh
+          grep -q 'LEGACY_OWNER_MARKER="${INSTALL_DIR}/.magictier-owned"' router-plugin/install.sh
           grep -q '本次安装已取消' router-plugin/install.sh
+          grep -q 'namespace_conflict_test' router-plugin/install.sh
+          grep -q 'softcenter_module_magic_install' router-plugin/install.sh
+          grep -q '检测到原 magictier 插件' router-plugin/install.sh
           ! grep -q '/koolshare/magictier' router-plugin/install.sh
           ! grep -q '/koolshare/magictier' router-plugin/uninstall.sh
-          test -s router-plugin/res/magictier.png
-          file router-plugin/res/magictier.png | grep -q 'PNG image data'
-          grep -q 'res/magictier.png' router-plugin/install.sh
-          grep -q '/res/icon-magictier.png' router-plugin/webs/Module_magictier.asp
-          grep -q 'RSS_LIMIT_KB="${magictier_rss_limit_kb:-65536}"' router-plugin/scripts/magictier_config.sh
-          grep -q 'sleep 20' router-plugin/scripts/magictier_config.sh
-          grep -q 'RSS_RESTART_MAX=3' router-plugin/scripts/magictier_config.sh
-          grep -q '不会重启路由器' router-plugin/scripts/magictier_config.sh
-          ! grep -qi 'reboot' router-plugin/scripts/magictier_config.sh
+          ! grep -q 'dbus set magictier_' router-plugin/install.sh
+          ! grep -q '/koolshare/scripts/magictier_config.sh' router-plugin/install.sh
+          ! grep -q '/koolshare/webs/Module_magictier.asp' router-plugin/install.sh
+          ! grep -q '/koolshare/res/icon-magictier.png' router-plugin/install.sh
+          test -s router-plugin/res/magic.png
+          file router-plugin/res/magic.png | grep -q 'PNG image data'
+          grep -q 'res/magic.png' router-plugin/install.sh
+          grep -q '/res/icon-magic.png' router-plugin/webs/Module_magic.asp
+          grep -q 'RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"' router-plugin/scripts/magic_config.sh
+          grep -q 'sleep 20' router-plugin/scripts/magic_config.sh
+          grep -q 'RSS_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
+          grep -q '不会重启路由器' router-plugin/scripts/magic_config.sh
+          ! grep -qi 'reboot' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
           node <<'NODE'
           const fs = require('fs');
-          const html = fs.readFileSync('router-plugin/webs/Module_magictier.asp', 'utf8');
+          const html = fs.readFileSync('router-plugin/webs/Module_magic.asp', 'utf8');
           const scripts = [...html.matchAll(/<script type="text\/javascript">([\s\S]*?)<\/script>/g)];
-          const app = scripts.map(x => x[1]).find(x => x.includes('var db_magictier'));
+          const app = scripts.map(x => x[1]).find(x => x.includes('var db_magic'));
           if (!app) throw new Error('MagicTier inline JavaScript not found');
           const fields = {
-            magictier_hostname: {value: 'router-a'},
-            magictier_instance_name: {value: 'default'},
-            magictier_network_name: {value: 'company_vpn'},
-            magictier_network_secret: {value: 'sec\\ret"1'},
-            magictier_ipv4: {value: '10.126.126.50/24'},
-            magictier_listeners: {value: 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010'},
-            magictier_peers: {value: 'reality://1.2.3.4:443,tcp://5.6.7.8:11010'},
-            magictier_proxy_networks: {value: '192.168.50.0/24,10.8.0.0/24'}
+            magic_hostname: {value: 'router-a'},
+            magic_instance_name: {value: 'default'},
+            magic_network_name: {value: 'company_vpn'},
+            magic_network_secret: {value: 'sec\\ret"1'},
+            magic_ipv4: {value: '10.126.126.50/24'},
+            magic_listeners: {value: 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010'},
+            magic_peers: {value: 'reality://1.2.3.4:443,tcp://5.6.7.8:11010'},
+            magic_proxy_networks: {value: '192.168.50.0/24,10.8.0.0/24'}
           };
           global.document = {getElementById: id => fields[id] || {}};
           global.navigator = {};
           global.window = {};
           global.alert = () => {};
           eval(app);
-          const expectedSecret = fields.magictier_network_secret.value;
+          const expectedSecret = fields.magic_network_secret.value;
           const exported = build_config_text();
           Object.values(fields).forEach(x => x.value = '');
           if (!import_config_text(exported)) throw new Error('exported config cannot be imported');
-          if (fields.magictier_network_name.value !== 'company_vpn') throw new Error('network name round-trip failed');
-          if (fields.magictier_network_secret.value !== expectedSecret) throw new Error('network secret round-trip failed');
-          if (fields.magictier_listeners.value !== 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010') throw new Error('listeners round-trip failed');
-          if (fields.magictier_peers.value !== 'reality://1.2.3.4:443,tcp://5.6.7.8:11010') throw new Error('peers round-trip failed');
-          if (fields.magictier_proxy_networks.value !== '192.168.50.0/24,10.8.0.0/24') throw new Error('proxy networks round-trip failed');
-          fields.magictier_network_secret.value = '';
-          fields.magictier_listeners.value = '';
-          fields.magictier_peers.value = '';
-          fields.magictier_proxy_networks.value = '';
+          if (fields.magic_network_name.value !== 'company_vpn') throw new Error('network name round-trip failed');
+          if (fields.magic_network_secret.value !== expectedSecret) throw new Error('network secret round-trip failed');
+          if (fields.magic_listeners.value !== 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010') throw new Error('listeners round-trip failed');
+          if (fields.magic_peers.value !== 'reality://1.2.3.4:443,tcp://5.6.7.8:11010') throw new Error('peers round-trip failed');
+          if (fields.magic_proxy_networks.value !== '192.168.50.0/24,10.8.0.0/24') throw new Error('proxy networks round-trip failed');
+          fields.magic_network_secret.value = '';
+          fields.magic_listeners.value = '';
+          fields.magic_peers.value = '';
+          fields.magic_proxy_networks.value = '';
           const exportedEmpty = build_config_text();
-          fields.magictier_network_secret.value = 'old-secret';
-          fields.magictier_listeners.value = 'tcp://old:11010';
-          fields.magictier_peers.value = 'tcp://old:11010';
-          fields.magictier_proxy_networks.value = '172.16.0.0/16';
+          fields.magic_network_secret.value = 'old-secret';
+          fields.magic_listeners.value = 'tcp://old:11010';
+          fields.magic_peers.value = 'tcp://old:11010';
+          fields.magic_proxy_networks.value = '172.16.0.0/16';
           if (!import_config_text(exportedEmpty)) throw new Error('empty config cannot be imported');
-          if (fields.magictier_network_secret.value !== '') throw new Error('empty network secret restore failed');
-          if (fields.magictier_listeners.value !== '') throw new Error('empty listeners restore failed');
-          if (fields.magictier_peers.value !== '') throw new Error('empty peers restore failed');
-          if (fields.magictier_proxy_networks.value !== '') throw new Error('empty proxy networks restore failed');
+          if (fields.magic_network_secret.value !== '') throw new Error('empty network secret restore failed');
+          if (fields.magic_listeners.value !== '') throw new Error('empty listeners restore failed');
+          if (fields.magic_peers.value !== '') throw new Error('empty peers restore failed');
+          if (fields.magic_proxy_networks.value !== '') throw new Error('empty proxy networks restore failed');
           NODE
 
       - name: Create router packages
         run: |
           set -eux
           rm -rf DIST
-          mkdir -p DIST/TUF-BE3600-V2/magictier DIST/RT-AX86U/magictier
+          mkdir -p DIST/TUF-BE3600-V2/magic DIST/RT-AX86U/magic
 
-          cp -a router-plugin/. DIST/TUF-BE3600-V2/magictier/
-          cp -a router-plugin/. DIST/RT-AX86U/magictier/
-          mkdir -p DIST/TUF-BE3600-V2/magictier/bin DIST/RT-AX86U/magictier/bin
+          cp -a router-plugin/. DIST/TUF-BE3600-V2/magic/
+          cp -a router-plugin/. DIST/RT-AX86U/magic/
+          mkdir -p DIST/TUF-BE3600-V2/magic/bin DIST/RT-AX86U/magic/bin
 
-          install -m 0755 magictier/target/armv7-unknown-linux-musleabihf/router/magictier-core DIST/TUF-BE3600-V2/magictier/bin/
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/router/magictier-core DIST/RT-AX86U/magictier/bin/
+          install -m 0755 magictier/target/armv7-unknown-linux-musleabihf/router/magictier-core DIST/TUF-BE3600-V2/magic/bin/magic-core
+          install -m 0755 magictier/target/aarch64-unknown-linux-musl/router/magictier-core DIST/RT-AX86U/magic/bin/magic-core
 
-          chmod 0755 DIST/*/magictier/install.sh DIST/*/magictier/uninstall.sh DIST/*/magictier/scripts/magictier_config.sh DIST/*/magictier/scripts/magictier_health.sh
-          printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2 (ARMv7)' > DIST/TUF-BE3600-V2/magictier/target-model.txt
-          printf '%s\n' 'RT-AX86U (ARM64)' > DIST/RT-AX86U/magictier/target-model.txt
+          chmod 0755 DIST/*/magic/install.sh DIST/*/magic/uninstall.sh DIST/*/magic/scripts/magic_config.sh DIST/*/magic/scripts/magic_health.sh
+          printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2 (ARMv7)' > DIST/TUF-BE3600-V2/magic/target-model.txt
+          printf '%s\n' 'RT-AX86U (ARM64)' > DIST/RT-AX86U/magic/target-model.txt
 
-          tar -C DIST/TUF-BE3600-V2 -czf DIST/magictier-TUF-BE3600-V2-koolcenter-armv7.tar.gz magictier
-          tar -C DIST/RT-AX86U -czf DIST/magictier-RT-AX86U-koolcenter-arm64.tar.gz magictier
+          tar -C DIST/TUF-BE3600-V2 -czf DIST/magic-TUF-BE3600-V2-koolcenter-armv7.tar.gz magic
+          tar -C DIST/RT-AX86U -czf DIST/magic-RT-AX86U-koolcenter-arm64.tar.gz magic
 
           for pkg in DIST/*.tar.gz; do
             echo "Checking ${pkg}"
-            tar -tzf "${pkg}" | grep -qx 'magictier/install.sh'
-            tar -tzf "${pkg}" | grep -qx 'magictier/.valid'
-            tar -tzf "${pkg}" | grep -qx 'magictier/bin/magictier-core'
-            ! tar -tzf "${pkg}" | grep -q 'magictier/bin/magictier-cli'
-            tar -tzf "${pkg}" | grep -qx 'magictier/scripts/magictier_config.sh'
-            tar -tzf "${pkg}" | grep -qx 'magictier/webs/Module_magictier.asp'
-            tar -tzf "${pkg}" | grep -qx 'magictier/res/magictier.png'
+            tar -tzf "${pkg}" | grep -qx 'magic/install.sh'
+            tar -tzf "${pkg}" | grep -qx 'magic/.valid'
+            tar -tzf "${pkg}" | grep -qx 'magic/bin/magic-core'
+            ! tar -tzf "${pkg}" | grep -q 'magic/bin/magic-cli'
+            tar -tzf "${pkg}" | grep -qx 'magic/scripts/magic_config.sh'
+            tar -tzf "${pkg}" | grep -qx 'magic/webs/Module_magic.asp'
+            tar -tzf "${pkg}" | grep -qx 'magic/res/magic.png'
           done
 
           sha256sum DIST/*.tar.gz > DIST/SHA256SUMS.txt

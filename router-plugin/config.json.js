@@ -1,8 +1,8 @@
 {
-  "name": "magictier",
-  "title": "MagicTier",
-  "description": "MagicTier ARMv7/ARM64 mesh networking for ASUSWRT-Merlin/KoolCenter",
-  "version": "1.0.8",
+  "name": "magic",
+  "title": "MagicTier Magic",
+  "description": "MagicTier 独立版 ARMv7/ARM64 mesh networking for ASUSWRT-Merlin/KoolCenter",
+  "version": "1.1.0",
   "md5": "",
-  "home_url": "Module_magictier.asp"
+  "home_url": "Module_magic.asp"
 }

@@ -1,7 +1,7 @@
 #!/bin/sh
 
-PIDFILE="/var/run/magictier.pid"
-OUT="/tmp/upload/magictier_health.txt"
+PIDFILE="/var/run/magic.pid"
+OUT="/tmp/upload/magic_health.txt"
 SAMPLES="${1:-60}"
 INTERVAL="${2:-60}"
 
