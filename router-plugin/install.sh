@@ -5,7 +5,7 @@ source /koolshare/scripts/base.sh
 module="magictier"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 TITLE="MagicTier"
-DESCR="MagicTier ARM64 mesh networking"
+DESCR="MagicTier ARMv7/ARM64 mesh networking"
 PLVER="$(cat "${DIR}/version" 2>/dev/null || echo 1.0.0)"
 
 alias echo_date='echo 〖$(TZ=UTC-8 date -R +%Y年%m月%d日\ %X)〗:'
@@ -18,9 +18,9 @@ get_model() {
 platform_test() {
     ARCH="$(uname -m 2>/dev/null)"
     case "${ARCH}" in
-        aarch64|arm64) ;;
+        aarch64|arm64|armv7l|armv7) ;;
         *)
-            echo_date "不支持的CPU架构：${ARCH}，本插件仅支持ARM64。"
+            echo_date "不支持的CPU架构：${ARCH}，本插件支持ARMv7/ARM64。"
             exit 1
             ;;
     esac

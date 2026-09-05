@@ -1,4 +1,4 @@
-name: Build ASUS Router ARM64
+name: Build ASUS Router ARMv7 and ARM64
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  build-arm64:
+  build-router:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -25,11 +25,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler cmake clang pkg-config file binutils
 
-      - name: Install Rust 1.89 and ARM64 musl target
+      - name: Install Rust 1.89 router musl targets
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.89.0
-          targets: aarch64-unknown-linux-musl
+          targets: aarch64-unknown-linux-musl,armv7-unknown-linux-musleabihf
 
       - name: Install Zig
         uses: goto-bus-stop/setup-zig@v2
@@ -39,26 +39,33 @@ jobs:
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
-      - name: Build ARM64 static router binary
+      - name: Build static router binaries
         working-directory: magictier
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: |
           cargo zigbuild --profile router --target aarch64-unknown-linux-musl --bin magictier-core
+          cargo zigbuild --profile router --target armv7-unknown-linux-musleabihf --bin magictier-core
 
-      - name: Verify router binary
+      - name: Verify router binaries
         run: |
           set -eux
-          CORE=magictier/target/aarch64-unknown-linux-musl/router/magictier-core
-          test -x "$CORE"
-          file "$CORE"
-          ls -lh "$CORE"
-          stat -c 'magictier-core bytes=%s' "$CORE"
-          readelf -h "$CORE" | grep -E 'Class:|Machine:'
-          if readelf -l "$CORE" | grep -q 'Requesting program interpreter'; then
-            echo 'ERROR: magictier-core is dynamically linked'
-            exit 1
-          fi
+          for CORE in \
+            magictier/target/aarch64-unknown-linux-musl/router/magictier-core \
+            magictier/target/armv7-unknown-linux-musleabihf/router/magictier-core
+          do
+            test -x "$CORE"
+            file "$CORE"
+            ls -lh "$CORE"
+            stat -c 'magictier-core bytes=%s' "$CORE"
+            readelf -h "$CORE" | grep -E 'Class:|Machine:'
+            if readelf -l "$CORE" | grep -q 'Requesting program interpreter'; then
+              echo "ERROR: ${CORE} is dynamically linked"
+              exit 1
+            fi
+          done
+          file magictier/target/aarch64-unknown-linux-musl/router/magictier-core | grep -q 'ARM aarch64'
+          file magictier/target/armv7-unknown-linux-musleabihf/router/magictier-core | grep -Eq 'ARM, EABI5|ARM, EABI'
 
       - name: Verify KoolCenter plugin template
         run: |
@@ -80,6 +87,7 @@ jobs:
           grep -q 'magictier_log_max_bytes' router-plugin/scripts/magictier_config.sh
           grep -q 'magictier_rss_limit_kb' router-plugin/scripts/magictier_config.sh
           ! grep -q 'magictier-cli' router-plugin/install.sh
+          grep -q 'armv7l' router-plugin/install.sh
 
       - name: Create router packages
         run: |
@@ -91,14 +99,14 @@ jobs:
           cp -a router-plugin/. DIST/RT-AX86U/magictier/
           mkdir -p DIST/TUF-BE3600-V2/magictier/bin DIST/RT-AX86U/magictier/bin
 
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/router/magictier-core DIST/TUF-BE3600-V2/magictier/bin/
+          install -m 0755 magictier/target/armv7-unknown-linux-musleabihf/router/magictier-core DIST/TUF-BE3600-V2/magictier/bin/
           install -m 0755 magictier/target/aarch64-unknown-linux-musl/router/magictier-core DIST/RT-AX86U/magictier/bin/
 
           chmod 0755 DIST/*/magictier/install.sh DIST/*/magictier/uninstall.sh DIST/*/magictier/scripts/magictier_config.sh DIST/*/magictier/scripts/magictier_health.sh
-          printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2' > DIST/TUF-BE3600-V2/magictier/target-model.txt
-          printf '%s\n' 'RT-AX86U' > DIST/RT-AX86U/magictier/target-model.txt
+          printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2 (ARMv7)' > DIST/TUF-BE3600-V2/magictier/target-model.txt
+          printf '%s\n' 'RT-AX86U (ARM64)' > DIST/RT-AX86U/magictier/target-model.txt
 
-          tar -C DIST/TUF-BE3600-V2 -czf DIST/magictier-TUF-BE3600-V2-koolcenter-arm64.tar.gz magictier
+          tar -C DIST/TUF-BE3600-V2 -czf DIST/magictier-TUF-BE3600-V2-koolcenter-armv7.tar.gz magictier
           tar -C DIST/RT-AX86U -czf DIST/magictier-RT-AX86U-koolcenter-arm64.tar.gz magictier
 
           for pkg in DIST/*.tar.gz; do
@@ -118,7 +126,7 @@ jobs:
       - name: Upload router packages
         uses: actions/upload-artifact@v4
         with:
-          name: magic-merlin-asus-arm64
+          name: magic-merlin-asus-router
           path: |
             DIST/*.tar.gz
             DIST/SHA256SUMS.txt
