@@ -62,7 +62,11 @@ impl NetworkInstanceManager {
         self
     }
 
-    fn start_instance_task(&self, instance_id: uuid::Uuid) -> Result<(), anyhow::Error> {
+    fn start_instance_task(
+        &self,
+        instance_id: uuid::Uuid,
+        network_name: String,
+    ) -> Result<(), anyhow::Error> {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(anyhow::anyhow!(
                 "tokio runtime not found, cannot start instance task"
@@ -75,7 +79,6 @@ impl NetworkInstanceManager {
             .ok_or_else(|| anyhow::anyhow!("instance {} not found", instance_id))?;
         let instance_stop_notifier = instance.get_stop_notifier();
         let instance_event_receiver = instance.subscribe_event();
-        let network_name = instance.get_global_ctx().get_network_identity().network_name;
 
         let instance_map = self.instance_map.clone();
         let instance_stop_tasks = self.instance_stop_tasks.clone();
@@ -114,6 +117,7 @@ impl NetworkInstanceManager {
         config_file_control: ConfigFileControl,
     ) -> Result<uuid::Uuid, anyhow::Error> {
         let instance_id = cfg.get_id();
+        let network_name = cfg.get_network_identity().network_name;
         if self.instance_map.contains_key(&instance_id) {
             anyhow::bail!("instance {} already exists", instance_id);
         }
@@ -123,7 +127,7 @@ impl NetworkInstanceManager {
 
         self.instance_map.insert(instance_id, instance);
         if watch_event {
-            self.start_instance_task(instance_id)?;
+            self.start_instance_task(instance_id, network_name)?;
         }
         Ok(instance_id)
     }
