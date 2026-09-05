@@ -50,13 +50,14 @@ install_now() {
     cp -f "${DIR}/bin/magictier-core" /koolshare/bin/magictier-core
     cp -f "${DIR}/bin/magictier-cli" /koolshare/bin/magictier-cli
     cp -f "${DIR}/scripts/magictier_config.sh" /koolshare/scripts/magictier_config.sh
+    cp -f "${DIR}/scripts/magictier_health.sh" /koolshare/scripts/magictier_health.sh
     cp -f "${DIR}/webs/Module_magictier.asp" /koolshare/webs/Module_magictier.asp
     cp -f "${DIR}/uninstall.sh" /koolshare/scripts/uninstall_magictier.sh
     cp -f "${DIR}/version" /koolshare/magictier/version
     [ ! -f "${DIR}/res/icon-magictier.png" ] || cp -f "${DIR}/res/icon-magictier.png" /koolshare/res/icon-magictier.png
 
     chmod 0755 /koolshare/bin/magictier-core /koolshare/bin/magictier-cli
-    chmod 0755 /koolshare/scripts/magictier_config.sh /koolshare/scripts/uninstall_magictier.sh
+    chmod 0755 /koolshare/scripts/magictier_config.sh /koolshare/scripts/magictier_health.sh /koolshare/scripts/uninstall_magictier.sh
     ln -sf /koolshare/scripts/magictier_config.sh /koolshare/init.d/S97magictier.sh
     ln -sf /koolshare/scripts/magictier_config.sh /koolshare/init.d/N97magictier.sh
 
@@ -64,6 +65,8 @@ install_now() {
     [ -n "$(dbus get magictier_ipv4 2>/dev/null)" ] || dbus set magictier_ipv4="10.144.144.1/24"
     [ -n "$(dbus get magictier_listeners 2>/dev/null)" ] || dbus set magictier_listeners="tcp://0.0.0.0:11010,udp://0.0.0.0:11010"
     [ -n "$(dbus get magictier_enable 2>/dev/null)" ] || dbus set magictier_enable="0"
+    [ -n "$(dbus get magictier_log_max_bytes 2>/dev/null)" ] || dbus set magictier_log_max_bytes="524288"
+    [ -n "$(dbus get magictier_rss_limit_kb 2>/dev/null)" ] || dbus set magictier_rss_limit_kb="262144"
 
     dbus set magictier_version="${PLVER}"
     dbus set softcenter_module_magictier_version="${PLVER}"

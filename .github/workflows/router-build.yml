@@ -73,11 +73,17 @@ jobs:
           test -f router-plugin/.valid
           test -f router-plugin/config.json.js
           test -f router-plugin/scripts/magictier_config.sh
+          test -f router-plugin/scripts/magictier_health.sh
           test -f router-plugin/webs/Module_magictier.asp
           grep -qx 'hnd' router-plugin/.valid
           sh -n router-plugin/install.sh
           sh -n router-plugin/uninstall.sh
           sh -n router-plugin/scripts/magictier_config.sh
+          sh -n router-plugin/scripts/magictier_health.sh
+          ! grep -q 'killall magictier-core' router-plugin/scripts/magictier_config.sh
+          grep -q -- '--console-log-level warn --file-log-level off' router-plugin/scripts/magictier_config.sh
+          grep -q 'magictier_log_max_bytes' router-plugin/scripts/magictier_config.sh
+          grep -q 'magictier_rss_limit_kb' router-plugin/scripts/magictier_config.sh
 
       - name: Create router packages
         run: |
@@ -94,7 +100,7 @@ jobs:
           install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/RT-AX86U/magictier/bin/
           install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-cli DIST/RT-AX86U/magictier/bin/
 
-          chmod 0755 DIST/*/magictier/install.sh DIST/*/magictier/uninstall.sh DIST/*/magictier/scripts/magictier_config.sh
+          chmod 0755 DIST/*/magictier/install.sh DIST/*/magictier/uninstall.sh DIST/*/magictier/scripts/magictier_config.sh DIST/*/magictier/scripts/magictier_health.sh
           printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2' > DIST/TUF-BE3600-V2/magictier/target-model.txt
           printf '%s\n' 'RT-AX86U' > DIST/RT-AX86U/magictier/target-model.txt
 

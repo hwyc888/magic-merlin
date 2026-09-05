@@ -8,7 +8,7 @@ fi
 
 rm -f /koolshare/init.d/S97magictier.sh /koolshare/init.d/N97magictier.sh
 rm -f /koolshare/bin/magictier-core /koolshare/bin/magictier-cli
-rm -f /koolshare/scripts/magictier_config.sh /koolshare/scripts/uninstall_magictier.sh
+rm -f /koolshare/scripts/magictier_config.sh /koolshare/scripts/magictier_health.sh /koolshare/scripts/uninstall_magictier.sh
 rm -f /koolshare/webs/Module_magictier.asp /koolshare/res/icon-magictier.png
 rm -rf /koolshare/magictier
 
