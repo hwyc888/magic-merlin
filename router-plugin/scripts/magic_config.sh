@@ -173,7 +173,7 @@ start_service() {
     fi
     log_user "正在建立组网连接..."
 
-    set -- "${BIN}" --console-log-level warn --file-log-level off
+    set -- "${BIN}" --console-log-level warn --file-log-level off --dev-name magic0
     [ -z "${magic_hostname}" ] || set -- "$@" --hostname "${magic_hostname}"
     [ -z "${magic_instance_name}" ] || set -- "$@" --instance-name "${magic_instance_name}"
     [ -z "${magic_network_name}" ] || set -- "$@" --network-name "${magic_network_name}"

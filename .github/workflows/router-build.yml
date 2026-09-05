@@ -83,7 +83,7 @@ jobs:
           sh -n router-plugin/scripts/magic_config.sh
           sh -n router-plugin/scripts/magic_health.sh
           ! grep -q 'killall magictier-core' router-plugin/scripts/magic_config.sh
-          grep -q -- '--console-log-level warn --file-log-level off' router-plugin/scripts/magic_config.sh
+          grep -q -- '--console-log-level warn --file-log-level off --dev-name magic0' router-plugin/scripts/magic_config.sh
           grep -q 'magic_log_max_bytes' router-plugin/scripts/magic_config.sh
           grep -q 'magic_rss_limit_kb' router-plugin/scripts/magic_config.sh
           ! grep -q 'magictier-cli' router-plugin/install.sh
