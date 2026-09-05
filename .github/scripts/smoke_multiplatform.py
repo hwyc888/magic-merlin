@@ -54,8 +54,9 @@ def main():
             )
         return result.stdout
 
-    run(core, "--version")
-    run(core, "--help")
+    # Preserve this fork's existing custom core information flags.
+    run(core, "--zzversion")
+    run(core, "--zzhelp")
     checks.append("core_version_and_help")
     for options in [("--version",), ("--help",)] + [(cmd, "--help") for cmd in COMMANDS]:
         optimized = run(cli, *options)

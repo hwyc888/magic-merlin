@@ -26,7 +26,7 @@ CLI 是管理工具，执行命令后退出；保持组网的是 Core。文件�
 在 PowerShell 中进入该目录：
 
 ```powershell
-.\magictier-core.exe --help
+.\magictier-core.exe --zzhelp
 .\magictier-cli.exe --help
 ```
 
@@ -45,7 +45,7 @@ CLI 是管理工具，执行命令后退出；保持组网的是 Core。文件�
 
 ```sh
 chmod +x magictier-core magictier-cli
-./magictier-core --help
+./magictier-core --zzhelp
 ./magictier-cli --help
 ```
 
@@ -67,3 +67,5 @@ Core 访问 TUN 和配置网络通常需要 root 权限及系统提供 `/dev/net
 自动验证包含 Core 启动帮助/版本、优化 CLI 与标准 release CLI 的 16 类命令帮助一致性、Bash/PowerShell 补全一致性、错误参数退出码。Windows x64 和 Linux x64 另外使用临时的本地 Core 验证查询及配置增删；测试使用 no-TUN 模式，不更改生产网络或安装服务。ARM64/ARMv7 使用 QEMU 验证启动和命令界面，不能替代真实 ARM 设备的联网验收。
 
 这些检查不是所有网络场景的完整验收。真实 TUN、系统服务安装、跨主机 NAT 穿透、RDP、长期高负载和具体设备驱动兼容性仍需在目标设备验证。原有命令的实现范围保持不变，帮助一致性不表示补齐了原项目中未实现的功能。
+
+注意：本项目 Core 原有的帮助和版本参数是 `--zzhelp`、`--zzversion`；CLI 使用标准的 `--help`、`--version`。此次保留 Core 原有参数命名，没有更改运行逻辑。
