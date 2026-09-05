@@ -282,7 +282,7 @@ fn handle_event(
     mut events: EventBusSubscriber,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut network_connected = false;
+        let mut peer_count = 0usize;
         let mut connect_warning_shown = false;
         let mut last_connect_target = String::new();
 
@@ -291,19 +291,28 @@ fn handle_event(
                 match e {
                     GlobalCtxEvent::PeerAdded(p) => {
                         print_event(instance_id, format!("new peer added. peer_id: {}", p));
-                        if !network_connected {
+                        peer_count = peer_count.saturating_add(1);
+                        if peer_count == 1 {
                             print_user_event(&format!("✓ 已成功加入网络：{}", network_name));
                             print_user_event("✓ 组网连接成功");
-                            network_connected = true;
                         } else {
-                            print_user_event("✓ 新的组网节点已连接");
+                            print_user_event(&format!("✓ 新的组网节点已连接，当前在线节点：{}", peer_count));
                         }
                         connect_warning_shown = false;
                     }
 
                     GlobalCtxEvent::PeerRemoved(p) => {
                         print_event(instance_id, format!("peer removed. peer_id: {}", p));
-                        print_user_event("⚠ 组网节点已断开，系统正在自动维护连接");
+                        peer_count = peer_count.saturating_sub(1);
+                        if peer_count == 0 {
+                            print_user_event("⚠ 组网连接已断开，正在自动重新连接...");
+                            connect_warning_shown = false;
+                        } else {
+                            print_user_event(&format!(
+                                "⚠ 有一个组网节点已断开，其他连接仍正常，在线节点：{}",
+                                peer_count
+                            ));
+                        }
                     }
 
                     GlobalCtxEvent::PeerConnAdded(p) => {
@@ -399,7 +408,7 @@ fn handle_event(
                                 dst, ip_version, err
                             ),
                         );
-                        if !network_connected && !connect_warning_shown {
+                        if peer_count == 0 && !connect_warning_shown {
                             let target = url::Url::parse(&dst)
                                 .map(|u| endpoint_label(&u))
                                 .unwrap_or_else(|_| "已配置节点".to_string());
