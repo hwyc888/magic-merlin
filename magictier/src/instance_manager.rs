@@ -66,6 +66,7 @@ impl NetworkInstanceManager {
         &self,
         instance_id: uuid::Uuid,
         network_name: String,
+        instance_event_receiver: EventBusSubscriber,
     ) -> Result<(), anyhow::Error> {
         if tokio::runtime::Handle::try_current().is_err() {
             return Err(anyhow::anyhow!(
@@ -78,7 +79,6 @@ impl NetworkInstanceManager {
             .get(&instance_id)
             .ok_or_else(|| anyhow::anyhow!("instance {} not found", instance_id))?;
         let instance_stop_notifier = instance.get_stop_notifier();
-        let instance_event_receiver = instance.subscribe_event();
 
         let instance_map = self.instance_map.clone();
         let instance_stop_tasks = self.instance_stop_tasks.clone();
@@ -91,9 +91,11 @@ impl NetworkInstanceManager {
                 let Some(instance_stop_notifier) = instance_stop_notifier else {
                     return;
                 };
-                let _t = instance_event_receiver.map(|event| {
-                    ScopedTask::from(handle_event(instance_id, network_name.clone(), event))
-                });
+                let _t = ScopedTask::from(handle_event(
+                    instance_id,
+                    network_name.clone(),
+                    instance_event_receiver,
+                ));
                 instance_stop_notifier.notified().await;
                 if let Some(instance) = instance_map.get(&instance_id) {
                     if let Some(e) = instance.get_latest_error_msg() {
@@ -123,11 +125,11 @@ impl NetworkInstanceManager {
         }
 
         let mut instance = NetworkInstance::new(cfg, config_file_control);
-        instance.start()?;
+        let instance_event_receiver = instance.start()?;
 
         self.instance_map.insert(instance_id, instance);
         if watch_event {
-            self.start_instance_task(instance_id, network_name)?;
+            self.start_instance_task(instance_id, network_name, instance_event_receiver)?;
         }
         Ok(instance_id)
     }
