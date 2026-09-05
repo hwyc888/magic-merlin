@@ -45,12 +45,28 @@ impl WindowsBuild {
         // add third_party dir to link search path
         let target = std::env::var("TARGET").unwrap_or_default();
 
-        if target.contains("x86_64") {
-            println!("cargo:rustc-link-search=native=magictier/third_party/x86_64/");
+        let arch_dir = if target.contains("x86_64") {
+            Some("x86_64")
         } else if target.contains("i686") {
-            println!("cargo:rustc-link-search=native=magictier/third_party/i686/");
+            Some("i686")
         } else if target.contains("aarch64") {
-            println!("cargo:rustc-link-search=native=magictier/third_party/arm64/");
+            Some("arm64")
+        } else {
+            None
+        };
+        if let Some(arch_dir) = arch_dir {
+            // Cargo runs this script in the package directory, not its parent.
+            // Use an absolute path so both --manifest-path and cd builds work.
+            let native_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap())
+                .join("third_party")
+                .join(arch_dir);
+            assert!(
+                native_dir.join("Packet.lib").is_file(),
+                "Packet.lib missing in {}",
+                native_dir.display()
+            );
+            println!("cargo:rustc-link-search=native={}", native_dir.display());
+            println!("cargo:rerun-if-changed={}", native_dir.display());
         }
 
         let protoc_path = if let Some(o) = Self::check_protoc_exist() {

@@ -351,10 +351,12 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+# Size optimization only: CLI builds MUST keep the default feature set.
+# Preserve release panic/unwind semantics rather than removing functionality.
 [profile.cli-small]
 inherits = "release"
 opt-level = "z"
 lto = "fat"
 codegen-units = 1
-panic = "abort"
+panic = "unwind"
 strip = "symbols"

@@ -7,6 +7,8 @@ on:
     paths:
       - 'magictier/**'
       - '.github/workflows/multiplatform-build.yml'
+      - '.github/scripts/smoke_multiplatform.py'
+      - '.github/MULTIPLATFORM-README.md'
 
 permissions:
   contents: read
@@ -17,7 +19,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+      - name: Resolve one shared dependency lock for all four targets
+        working-directory: magictier
+        run: cargo generate-lockfile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magictier-build-lockfile
+          path: magictier/Cargo.lock
+          if-no-files-found: error
+          retention-days: 30
+
   windows-x64:
+    needs: dependencies
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -30,26 +51,39 @@ jobs:
           toolchain: 1.89.0
           targets: x86_64-pc-windows-msvc
 
+      - name: Download shared dependency lock
+        uses: actions/download-artifact@v4
+        with:
+          name: magictier-build-lockfile
+          path: magictier
+
       - name: Build Windows x64 core
         working-directory: magictier
-        run: cargo build --release --target x86_64-pc-windows-msvc --bin magictier-core
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc --bin magictier-core --bin magictier-cli
 
-      - name: Build slim Windows x64 CLI
+      - name: Build size-optimized Windows CLI with all default features
         working-directory: magictier
-        run: cargo build --profile cli-small --no-default-features --target x86_64-pc-windows-msvc --bin magictier-cli
+        run: cargo build --locked --profile cli-small --target x86_64-pc-windows-msvc --bin magictier-cli
 
-      - name: Verify Windows binaries
+      - name: Verify and package Windows binaries and runtime dependencies
         shell: pwsh
         run: |
-          $core = "magictier/target/x86_64-pc-windows-msvc/release/magictier-core.exe"
+          $ErrorActionPreference = "Stop"
+          $release = "magictier/target/x86_64-pc-windows-msvc/release"
+          $core = "$release/magictier-core.exe"
           $cli = "magictier/target/x86_64-pc-windows-msvc/cli-small/magictier-cli.exe"
           if (!(Test-Path $core)) { throw "missing $core" }
           if (!(Test-Path $cli)) { throw "missing $cli" }
-          & $core --version
-          & $cli --help | Select-Object -First 20
           New-Item -ItemType Directory -Force -Path out/windows-x64 | Out-Null
           Copy-Item $core out/windows-x64/magictier-core.exe
           Copy-Item $cli out/windows-x64/magictier-cli.exe
+          foreach ($dependency in @("Packet.dll", "wintun.dll", "WinDivert64.sys")) {
+            Copy-Item "magictier/third_party/x86_64/$dependency" "out/windows-x64/$dependency"
+            Copy-Item "magictier/third_party/x86_64/$dependency" "$release/$dependency"
+          }
+          Copy-Item magictier/Cargo.lock out/windows-x64/Cargo.lock
+          python .github/scripts/smoke_multiplatform.py --core out/windows-x64/magictier-core.exe --cli out/windows-x64/magictier-cli.exe --baseline "$release/magictier-cli.exe" --report out/windows-x64/BUILD-REPORT.json
+          if ($LASTEXITCODE -ne 0) { throw "Windows binary validation failed" }
           Get-Item out/windows-x64/* | Select-Object Name,Length
 
       - name: Upload Windows x64
@@ -61,6 +95,7 @@ jobs:
           retention-days: 30
 
   linux:
+    needs: dependencies
     name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -72,20 +107,23 @@ jobs:
             target: x86_64-unknown-linux-musl
             out: linux-x64
             arch_pattern: 'x86-64'
+            runner: ''
           - name: Linux ARM64
             target: aarch64-unknown-linux-musl
             out: linux-arm64
             arch_pattern: 'ARM aarch64'
+            runner: qemu-aarch64
           - name: Linux ARMv7
             target: armv7-unknown-linux-musleabihf
             out: linux-armv7
             arch_pattern: 'ARM, EABI5'
+            runner: qemu-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y file musl-tools protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y file musl-tools protobuf-compiler qemu-user time
 
       - name: Install Rust 1.89 target
         uses: dtolnay/rust-toolchain@master
@@ -99,15 +137,21 @@ jobs:
           version: 0.13.0
 
       - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild --locked
+        run: cargo install cargo-zigbuild --version 0.23.4 --locked
+
+      - name: Download shared dependency lock
+        uses: actions/download-artifact@v4
+        with:
+          name: magictier-build-lockfile
+          path: magictier
 
       - name: Build Linux core
         working-directory: magictier
-        run: cargo zigbuild --release --target ${{ matrix.target }} --bin magictier-core
+        run: cargo zigbuild --locked --release --target ${{ matrix.target }} --bin magictier-core --bin magictier-cli
 
-      - name: Build slim Linux CLI
+      - name: Build size-optimized Linux CLI with all default features
         working-directory: magictier
-        run: cargo zigbuild --profile cli-small --no-default-features --target ${{ matrix.target }} --bin magictier-cli
+        run: cargo zigbuild --locked --profile cli-small --target ${{ matrix.target }} --bin magictier-cli
 
       - name: Verify Linux binaries
         env:
@@ -124,19 +168,25 @@ jobs:
           file "${cli}" | tee /tmp/cli-file.txt
           grep -q "${ARCH_PATTERN}" /tmp/core-file.txt
           grep -q "${ARCH_PATTERN}" /tmp/cli-file.txt
-          grep -q 'statically linked' /tmp/core-file.txt
-          grep -q 'statically linked' /tmp/cli-file.txt
+          grep -Eq 'statically linked|static-pie linked' /tmp/core-file.txt
+          grep -Eq 'statically linked|static-pie linked' /tmp/cli-file.txt
           mkdir -p "out/${OUT}"
           install -m 0755 "${core}" "out/${OUT}/magictier-core"
           install -m 0755 "${cli}" "out/${OUT}/magictier-cli"
+          cp magictier/Cargo.lock "out/${OUT}/Cargo.lock"
           ls -lh "out/${OUT}"
 
-      - name: Smoke test native Linux x64
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+      - name: Validate CLI parity and native RPC or QEMU startup
+        env:
+          TARGET: ${{ matrix.target }}
+          OUT: ${{ matrix.out }}
+          RUNNER: ${{ matrix.runner }}
         run: |
-          set -eux
-          magictier/target/x86_64-unknown-linux-musl/release/magictier-core --version
-          magictier/target/x86_64-unknown-linux-musl/cli-small/magictier-cli --help | head -20
+          python3 .github/scripts/smoke_multiplatform.py \
+            --core "out/${OUT}/magictier-core" \
+            --cli "out/${OUT}/magictier-cli" \
+            --baseline "magictier/target/${TARGET}/release/magictier-cli" \
+            --runner "${RUNNER}" --report "out/${OUT}/BUILD-REPORT.json"
 
       - name: Upload Linux target
         uses: actions/upload-artifact@v4
@@ -150,6 +200,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [windows-x64, linux]
     steps:
+      - uses: actions/checkout@v4
       - name: Download all platform binaries
         uses: actions/download-artifact@v4
         with:
@@ -165,7 +216,15 @@ jobs:
           cp DIST/magictier-linux-x64/* package/linux-x64/
           cp DIST/magictier-linux-arm64/* package/linux-arm64/
           cp DIST/magictier-linux-armv7/* package/linux-armv7/
-          (cd package && sha256sum windows-x64/* linux-x64/* linux-arm64/* linux-armv7/* > SHA256SUMS.txt)
+          cp magictier/LICENSE package/LICENSE
+          cp .github/MULTIPLATFORM-README.md package/README.md
+          for platform in linux-x64 linux-arm64 linux-armv7; do
+            chmod 0755 "package/${platform}/magictier-core" "package/${platform}/magictier-cli"
+          done
+          cmp package/windows-x64/Cargo.lock package/linux-x64/Cargo.lock
+          cmp package/linux-arm64/Cargo.lock package/linux-x64/Cargo.lock
+          cmp package/linux-armv7/Cargo.lock package/linux-x64/Cargo.lock
+          (cd package && sha256sum README.md LICENSE windows-x64/* linux-x64/* linux-arm64/* linux-armv7/* > SHA256SUMS.txt)
           find package -maxdepth 2 -type f -exec ls -lh {} \;
 
       - name: Upload complete multi-platform package
