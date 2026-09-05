@@ -32,11 +32,11 @@ jobs:
 
       - name: Build Windows x64 core
         working-directory: magictier
-        run: cargo build --release --locked --target x86_64-pc-windows-msvc --bin magictier-core
+        run: cargo build --release --target x86_64-pc-windows-msvc --bin magictier-core
 
       - name: Build slim Windows x64 CLI
         working-directory: magictier
-        run: cargo build --profile cli-small --locked --no-default-features --target x86_64-pc-windows-msvc --bin magictier-cli
+        run: cargo build --profile cli-small --no-default-features --target x86_64-pc-windows-msvc --bin magictier-cli
 
       - name: Verify Windows binaries
         shell: pwsh
@@ -103,11 +103,11 @@ jobs:
 
       - name: Build Linux core
         working-directory: magictier
-        run: cargo zigbuild --release --locked --target ${{ matrix.target }} --bin magictier-core
+        run: cargo zigbuild --release --target ${{ matrix.target }} --bin magictier-core
 
       - name: Build slim Linux CLI
         working-directory: magictier
-        run: cargo zigbuild --profile cli-small --locked --no-default-features --target ${{ matrix.target }} --bin magictier-cli
+        run: cargo zigbuild --profile cli-small --no-default-features --target ${{ matrix.target }} --bin magictier-cli
 
       - name: Verify Linux binaries
         env:
