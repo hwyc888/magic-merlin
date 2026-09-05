@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build-router:
@@ -19,33 +20,118 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether core rebuild is required
+        id: core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          BUILD_CORE=true
+          BASE_SHA="${{ github.event.before }}"
+          case "${BASE_SHA}" in
+            ''|0000000000000000000000000000000000000000)
+              BASE_SHA="$(git rev-parse HEAD^ 2>/dev/null || true)"
+              ;;
+          esac
+
+          if [ -n "${BASE_SHA}" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            if git diff --quiet "${BASE_SHA}" "${GITHUB_SHA}" -- magictier/; then
+              BUILD_CORE=false
+            fi
+          fi
+
+          ARTIFACT_ID=""
+          if [ "${BUILD_CORE}" = "false" ]; then
+            RUNS_JSON="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/router-build.yml/runs?branch=main&status=success&per_page=20")"
+            PREV_RUN_ID="$(printf '%s' "${RUNS_JSON}" | python3 -c 'import json,sys; data=json.load(sys.stdin); current=int(sys.argv[1]); print(next((str(r["id"]) for r in data.get("workflow_runs",[]) if int(r["id"]) != current), ""))' "${GITHUB_RUN_ID}")"
+            if [ -n "${PREV_RUN_ID}" ]; then
+              ARTIFACTS_JSON="$(curl -fsSL \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${PREV_RUN_ID}/artifacts?per_page=100")"
+              ARTIFACT_ID="$(printf '%s' "${ARTIFACTS_JSON}" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next((str(a["id"]) for a in data.get("artifacts",[]) if a.get("name")=="magic-merlin-asus-router" and not a.get("expired")), ""))')"
+            fi
+            if [ -z "${ARTIFACT_ID}" ]; then
+              echo "No reusable core artifact found; falling back to a core rebuild."
+              BUILD_CORE=true
+            fi
+          fi
+
+          echo "build_core=${BUILD_CORE}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_id=${ARTIFACT_ID}" >> "${GITHUB_OUTPUT}"
+          if [ "${BUILD_CORE}" = "true" ]; then
+            echo "Core source: rebuild (magictier/ changed or no reusable artifact)."
+          else
+            echo "Core source: reuse artifact ${ARTIFACT_ID}; magictier/ is unchanged."
+          fi
 
       - name: Install build tools
+        if: steps.core.outputs.build_core == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler cmake clang pkg-config file binutils
 
       - name: Install Rust 1.89 router musl targets
+        if: steps.core.outputs.build_core == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.89.0
           targets: aarch64-unknown-linux-musl,armv7-unknown-linux-musleabihf
 
       - name: Install Zig
+        if: steps.core.outputs.build_core == 'true'
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.13.0
 
       - name: Install cargo-zigbuild
+        if: steps.core.outputs.build_core == 'true'
         run: cargo install cargo-zigbuild --locked
 
       - name: Build static router binaries
+        if: steps.core.outputs.build_core == 'true'
         working-directory: magictier
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: |
           cargo zigbuild --profile router --target aarch64-unknown-linux-musl --bin magictier-core
           cargo zigbuild --profile router --target armv7-unknown-linux-musleabihf --bin magictier-core
+
+      - name: Reuse last verified router core binaries
+        if: steps.core.outputs.build_core == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.core.outputs.artifact_id }}
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/magic-core-base
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" \
+            -o /tmp/magic-core-base.zip
+          unzip -q /tmp/magic-core-base.zip -d /tmp/magic-core-base
+
+          TUF_PKG="$(find /tmp/magic-core-base -maxdepth 1 -type f -name 'magic-TUF-BE3600-V2-koolcenter-armv7.tar.gz' -print -quit)"
+          RT_PKG="$(find /tmp/magic-core-base -maxdepth 1 -type f -name 'magic-RT-AX86U-koolcenter-arm64.tar.gz' -print -quit)"
+          test -n "${TUF_PKG}"
+          test -n "${RT_PKG}"
+
+          mkdir -p \
+            magictier/target/armv7-unknown-linux-musleabihf/router \
+            magictier/target/aarch64-unknown-linux-musl/router
+          tar -xOzf "${TUF_PKG}" magic/bin/magic-core > magictier/target/armv7-unknown-linux-musleabihf/router/magictier-core
+          tar -xOzf "${RT_PKG}" magic/bin/magic-core > magictier/target/aarch64-unknown-linux-musl/router/magictier-core
+          chmod 0755 \
+            magictier/target/armv7-unknown-linux-musleabihf/router/magictier-core \
+            magictier/target/aarch64-unknown-linux-musl/router/magictier-core
 
       - name: Verify router binaries
         run: |
