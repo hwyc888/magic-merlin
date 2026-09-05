@@ -14,6 +14,9 @@ LOG_KEEP_BYTES="65536"
 INTERNAL_LOG_MAX_BYTES="65536"
 INTERNAL_LOG_KEEP_BYTES="32768"
 RSS_LIMIT_KB="${magictier_rss_limit_kb:-65536}"
+RSS_RESTART_STATE="/tmp/magictier_rss_restart.state"
+RSS_RESTART_WINDOW=600
+RSS_RESTART_MAX=3
 LOCK_DIR="/tmp/magictier_config.lock"
 
 mkdir -p /tmp/upload
@@ -107,12 +110,36 @@ start_monitor() {
             RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"
             [ -n "${RSS}" ] || RSS=0
             if [ "${RSS}" -gt "${RSS_LIMIT_KB}" ] 2>/dev/null; then
-                log_user "✗ 内存保护已触发：MagicTier占用过高，已自动停止以保护路由器。"
-                dbus set magictier_enable="0"
+                NOW="$(date +%s 2>/dev/null)"
+                [ -n "${NOW}" ] || NOW=0
+                WINDOW_START=0
+                RESTART_COUNT=0
+                if [ -f "${RSS_RESTART_STATE}" ]; then
+                    read WINDOW_START RESTART_COUNT < "${RSS_RESTART_STATE}" 2>/dev/null
+                fi
+                [ -n "${WINDOW_START}" ] || WINDOW_START=0
+                [ -n "${RESTART_COUNT}" ] || RESTART_COUNT=0
+                if [ "${NOW}" -eq 0 ] || [ $((NOW - WINDOW_START)) -gt "${RSS_RESTART_WINDOW}" ] 2>/dev/null; then
+                    WINDOW_START="${NOW}"
+                    RESTART_COUNT=0
+                fi
+                RESTART_COUNT=$((RESTART_COUNT + 1))
+                echo "${WINDOW_START} ${RESTART_COUNT}" > "${RSS_RESTART_STATE}" 2>/dev/null
+
+                log_user "⚠ 内存保护触发：MagicTier RSS ${RSS}KB 超过 ${RSS_LIMIT_KB}KB。"
                 kill "${PID}" 2>/dev/null
                 sleep 2
                 pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
                 rm -f "${PIDFILE}"
+
+                if [ "${RESTART_COUNT}" -le "${RSS_RESTART_MAX}" ] 2>/dev/null; then
+                    log_user "正在自动重启 MagicTier 核心程序，不会重启路由器。"
+                    rm -f "${MONITOR_PIDFILE}"
+                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magictier_config.sh start >/dev/null 2>&1 ) &
+                else
+                    log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
+                    dbus set magictier_enable="0"
+                fi
                 exit 0
             fi
         done
@@ -128,7 +155,7 @@ start_service() {
     }
 
     stop_service
-    : > "${LOGFILE}"
+    [ "${MAGICTIER_PRESERVE_LOG}" = "1" ] || : > "${LOGFILE}"
     : > "${INTERNAL_LOGFILE}"
 
     log_user "正在启动 MagicTier..."
