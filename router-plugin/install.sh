@@ -48,7 +48,6 @@ install_now() {
     mkdir -p /koolshare/bin /koolshare/scripts /koolshare/webs /koolshare/res /koolshare/init.d /koolshare/magictier
 
     cp -f "${DIR}/bin/magictier-core" /koolshare/bin/magictier-core
-    cp -f "${DIR}/bin/magictier-cli" /koolshare/bin/magictier-cli
     cp -f "${DIR}/scripts/magictier_config.sh" /koolshare/scripts/magictier_config.sh
     cp -f "${DIR}/scripts/magictier_health.sh" /koolshare/scripts/magictier_health.sh
     cp -f "${DIR}/webs/Module_magictier.asp" /koolshare/webs/Module_magictier.asp
@@ -56,7 +55,7 @@ install_now() {
     cp -f "${DIR}/version" /koolshare/magictier/version
     [ ! -f "${DIR}/res/icon-magictier.png" ] || cp -f "${DIR}/res/icon-magictier.png" /koolshare/res/icon-magictier.png
 
-    chmod 0755 /koolshare/bin/magictier-core /koolshare/bin/magictier-cli
+    chmod 0755 /koolshare/bin/magictier-core
     chmod 0755 /koolshare/scripts/magictier_config.sh /koolshare/scripts/magictier_health.sh /koolshare/scripts/uninstall_magictier.sh
     ln -sf /koolshare/scripts/magictier_config.sh /koolshare/init.d/S97magictier.sh
     ln -sf /koolshare/scripts/magictier_config.sh /koolshare/init.d/N97magictier.sh

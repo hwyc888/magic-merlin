@@ -39,29 +39,24 @@ jobs:
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
-      - name: Build ARM64 static binaries
+      - name: Build ARM64 static router binary
         working-directory: magictier
         env:
           CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
         run: |
-          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin magictier-core --bin magictier-cli
+          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin magictier-core
 
-      - name: Verify binaries
+      - name: Verify router binary
         run: |
           set -eux
           CORE=magictier/target/aarch64-unknown-linux-musl/release/magictier-core
-          CLI=magictier/target/aarch64-unknown-linux-musl/release/magictier-cli
           test -x "$CORE"
-          test -x "$CLI"
-          file "$CORE" "$CLI"
+          file "$CORE"
+          ls -lh "$CORE"
+          stat -c 'magictier-core bytes=%s' "$CORE"
           readelf -h "$CORE" | grep -E 'Class:|Machine:'
-          readelf -h "$CLI" | grep -E 'Class:|Machine:'
           if readelf -l "$CORE" | grep -q 'Requesting program interpreter'; then
             echo 'ERROR: magictier-core is dynamically linked'
-            exit 1
-          fi
-          if readelf -l "$CLI" | grep -q 'Requesting program interpreter'; then
-            echo 'ERROR: magictier-cli is dynamically linked'
             exit 1
           fi
 
@@ -84,6 +79,7 @@ jobs:
           grep -q -- '--console-log-level warn --file-log-level off' router-plugin/scripts/magictier_config.sh
           grep -q 'magictier_log_max_bytes' router-plugin/scripts/magictier_config.sh
           grep -q 'magictier_rss_limit_kb' router-plugin/scripts/magictier_config.sh
+          ! grep -q 'magictier-cli' router-plugin/install.sh
 
       - name: Create router packages
         run: |
@@ -96,9 +92,7 @@ jobs:
           mkdir -p DIST/TUF-BE3600-V2/magictier/bin DIST/RT-AX86U/magictier/bin
 
           install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/TUF-BE3600-V2/magictier/bin/
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-cli DIST/TUF-BE3600-V2/magictier/bin/
           install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-core DIST/RT-AX86U/magictier/bin/
-          install -m 0755 magictier/target/aarch64-unknown-linux-musl/release/magictier-cli DIST/RT-AX86U/magictier/bin/
 
           chmod 0755 DIST/*/magictier/install.sh DIST/*/magictier/uninstall.sh DIST/*/magictier/scripts/magictier_config.sh DIST/*/magictier/scripts/magictier_health.sh
           printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2' > DIST/TUF-BE3600-V2/magictier/target-model.txt
@@ -112,13 +106,14 @@ jobs:
             tar -tzf "${pkg}" | grep -qx 'magictier/install.sh'
             tar -tzf "${pkg}" | grep -qx 'magictier/.valid'
             tar -tzf "${pkg}" | grep -qx 'magictier/bin/magictier-core'
-            tar -tzf "${pkg}" | grep -qx 'magictier/bin/magictier-cli'
+            ! tar -tzf "${pkg}" | grep -q 'magictier/bin/magictier-cli'
             tar -tzf "${pkg}" | grep -qx 'magictier/scripts/magictier_config.sh'
             tar -tzf "${pkg}" | grep -qx 'magictier/webs/Module_magictier.asp'
           done
 
           sha256sum DIST/*.tar.gz > DIST/SHA256SUMS.txt
           ls -lh DIST/*.tar.gz DIST/SHA256SUMS.txt
+          stat -c '%n bytes=%s' DIST/*.tar.gz
 
       - name: Upload router packages
         uses: actions/upload-artifact@v4
