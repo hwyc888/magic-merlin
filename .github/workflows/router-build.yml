@@ -113,7 +113,7 @@ jobs:
             magictier_hostname: {value: 'router-a'},
             magictier_instance_name: {value: 'default'},
             magictier_network_name: {value: 'company_vpn'},
-            magictier_network_secret: {value: 'secret-1'},
+            magictier_network_secret: {value: 'sec\\ret"1'},
             magictier_ipv4: {value: '10.126.126.50/24'},
             magictier_listeners: {value: 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010'},
             magictier_peers: {value: 'reality://1.2.3.4:443,tcp://5.6.7.8:11010'},
@@ -124,10 +124,12 @@ jobs:
           global.window = {};
           global.alert = () => {};
           eval(app);
+          const expectedSecret = fields.magictier_network_secret.value;
           const exported = build_config_text();
           Object.values(fields).forEach(x => x.value = '');
           if (!import_config_text(exported)) throw new Error('exported config cannot be imported');
           if (fields.magictier_network_name.value !== 'company_vpn') throw new Error('network name round-trip failed');
+          if (fields.magictier_network_secret.value !== expectedSecret) throw new Error('network secret round-trip failed');
           if (fields.magictier_listeners.value !== 'tcp://0.0.0.0:11010,udp://0.0.0.0:11010') throw new Error('listeners round-trip failed');
           if (fields.magictier_peers.value !== 'reality://1.2.3.4:443,tcp://5.6.7.8:11010') throw new Error('peers round-trip failed');
           if (fields.magictier_proxy_networks.value !== '192.168.50.0/24,10.8.0.0/24') throw new Error('proxy networks round-trip failed');

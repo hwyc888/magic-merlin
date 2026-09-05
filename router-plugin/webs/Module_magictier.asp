@@ -142,12 +142,27 @@ function download_config_text(){
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){(window.URL||window.webkitURL).revokeObjectURL(url);},1000);
 }
+function config_unescape(v){
+    var out="";
+    for(var i=0;i<v.length;i++){
+        var ch=v.charAt(i);
+        if(ch!=="\\"||i+1>=v.length){out+=ch;continue;}
+        var next=v.charAt(++i);
+        if(next==="n")out+="\n";
+        else if(next==="r")out+="\r";
+        else if(next==="t")out+="\t";
+        else if(next==='"')out+='"';
+        else if(next==="\\")out+="\\";
+        else out+="\\"+next;
+    }
+    return out;
+}
 function toml_value(line){
     var p=line.indexOf("=");
     if(p<0)return "";
     var v=line.substring(p+1).replace(/^\s+|\s+$/g,"");
     if(v.length>=2&&v.charAt(0)==='"'&&v.charAt(v.length-1)==='"'){
-        v=v.substring(1,v.length-1).replace(/\\n/g,"\n").replace(/\\r/g,"\r").replace(/\\t/g,"\t").replace(/\\\"/g,'"').replace(/\\\\/g,"\\");
+        v=config_unescape(v.substring(1,v.length-1));
     }else if(v.length>=2&&v.charAt(0)==="'"&&v.charAt(v.length-1)==="'"){
         v=v.substring(1,v.length-1);
     }
@@ -171,7 +186,7 @@ function import_config_text(text){
         else if(section==="proxy_network"&&key==="cidr"&&val)proxy.push(val);
         else if(!section&&key==="listeners"){
             var m=line.match(/\[(.*)\]/);
-            if(m&&m[1])m[1].split(",").forEach(function(x){x=x.replace(/^\s+|\s+$/g,"");if(x.length>=2&&x.charAt(0)==='"'&&x.charAt(x.length-1)==='"')listeners.push(x.substring(1,x.length-1));});
+            if(m&&m[1])m[1].split(",").forEach(function(x){x=x.replace(/^\s+|\s+$/g,"");if(x.length>=2&&x.charAt(0)==='"'&&x.charAt(x.length-1)==='"')listeners.push(config_unescape(x.substring(1,x.length-1)));});
         }
         else if(!section&&(key==="hostname"||key==="instance_name"||key==="ipv4"))data[key]=val;
     }
