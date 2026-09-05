@@ -192,8 +192,11 @@ jobs:
           grep -q 'magic_internal.log' router-plugin/scripts/magic_config.sh
           grep -q '组网状态日志' router-plugin/webs/Module_magic.asp
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
-          test "$(cat router-plugin/version)" = "1.1.4"
-          grep -q '"version": "1.1.4"' router-plugin/config.json.js
+          grep -q 'DEFAULT_CONN_REEVALUATE_SECS: u64 = 30' magictier/src/peers/peer.rs
+          grep -q 'DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000' magictier/src/peers/peer.rs
+          grep -q 'current_path_active' magictier/src/peers/peer.rs
+          test "$(cat router-plugin/version)" = "1.2.0"
+          grep -q '"version": "1.2.0"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
           grep -q 'window.top.location.replace(target)' router-plugin/webs/Module_magic.asp
           grep -q 'onunload="unloadPage();"' router-plugin/webs/Module_magic.asp
@@ -216,6 +219,8 @@ jobs:
           grep -q 'res/magic.png' router-plugin/install.sh
           grep -q '/res/icon-magic.png' router-plugin/webs/Module_magic.asp
           grep -q 'RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"' router-plugin/scripts/magic_config.sh
+          grep -q 'RSS_HARD_LIMIT_KB="${magic_rss_hard_limit_kb:-98304}"' router-plugin/scripts/magic_config.sh
+          grep -q 'RSS_OVER_LIMIT_MAX=3' router-plugin/scripts/magic_config.sh
           grep -q 'sleep 20' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
           grep -q 'CRASH_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
@@ -229,7 +234,9 @@ jobs:
           grep -q 'get_wan_ipv4' router-plugin/scripts/magic_config.sh
           grep -q 'WAN 地址变化' router-plugin/scripts/magic_config.sh
           grep -q 'WAN 连接恢复' router-plugin/scripts/magic_config.sh
+          grep -q '不主动重启核心' router-plugin/scripts/magic_config.sh
           grep -q 'WAN_WAS_DOWN=0' router-plugin/scripts/magic_config.sh
+          ! grep -q 'nice -n 5' router-plugin/scripts/magic_config.sh
           grep -q 'sh /koolshare/scripts/magic_config.sh boot' router-plugin/scripts/magic_config.sh
           grep -q 'is_init_invocation' router-plugin/scripts/magic_config.sh
           grep -q '/koolshare/init.d/S97magic.sh' router-plugin/install.sh

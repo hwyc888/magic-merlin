@@ -27,6 +27,25 @@ use crate::{
 type ArcPeerConn = Arc<PeerConn>;
 type ConnMap = Arc<DashMap<PeerConnId, ArcPeerConn>>;
 
+const DEFAULT_CONN_REEVALUATE_SECS: u64 = 30;
+const DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000;
+const DEFAULT_CONN_MAX_LATENCY_PERCENT: u64 = 80;
+
+fn should_switch_default_conn(current_latency_us: u64, candidate_latency_us: u64) -> bool {
+    if current_latency_us == 0
+        || candidate_latency_us == 0
+        || candidate_latency_us >= current_latency_us
+    {
+        return false;
+    }
+
+    let absolute_improvement = current_latency_us - candidate_latency_us;
+    let relative_improvement = candidate_latency_us.saturating_mul(100)
+        <= current_latency_us.saturating_mul(DEFAULT_CONN_MAX_LATENCY_PERCENT);
+
+    absolute_improvement >= DEFAULT_CONN_MIN_IMPROVEMENT_US && relative_improvement
+}
+
 pub struct Peer {
     pub peer_node_id: PeerId,
     conns: ConnMap,
@@ -102,10 +121,66 @@ impl Peer {
         let conns_copy = conns.clone();
         let default_conn_id_copy = default_conn_id.clone();
         let default_conn_id_clear_task = ScopedTask::from(tokio::spawn(async move {
+            let mut last_sample_conn_id = PeerConnId::default();
+            let mut last_sample_tx_bytes = 0;
+            let mut last_sample_rx_bytes = 0;
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                if conns_copy.len() > 1 {
-                    default_conn_id_copy.store(PeerConnId::default());
+                tokio::time::sleep(std::time::Duration::from_secs(
+                    DEFAULT_CONN_REEVALUATE_SECS,
+                ))
+                .await;
+                if conns_copy.len() <= 1 {
+                    continue;
+                }
+
+                let current_conn_id = default_conn_id_copy.load();
+                let Some(current_conn) = conns_copy.get(&current_conn_id) else {
+                    continue;
+                };
+                let current_stats = current_conn.get_stats();
+                let current_latency = current_stats.latency_us;
+                drop(current_conn);
+
+                if last_sample_conn_id != current_conn_id {
+                    last_sample_conn_id = current_conn_id;
+                    last_sample_tx_bytes = current_stats.tx_bytes;
+                    last_sample_rx_bytes = current_stats.rx_bytes;
+                    continue;
+                }
+
+                let current_path_active = current_stats.tx_bytes > last_sample_tx_bytes
+                    || current_stats.rx_bytes > last_sample_rx_bytes;
+                last_sample_tx_bytes = current_stats.tx_bytes;
+                last_sample_rx_bytes = current_stats.rx_bytes;
+                if current_path_active {
+                    continue;
+                }
+
+                let mut candidate_conn_id = current_conn_id;
+                let mut candidate_latency = current_latency;
+                for conn in conns_copy.iter() {
+                    let latency = conn.value().get_stats().latency_us;
+                    if latency == 0 {
+                        continue;
+                    }
+                    if candidate_latency == 0 || latency < candidate_latency {
+                        candidate_latency = latency;
+                        candidate_conn_id = *conn.key();
+                    }
+                }
+
+                if candidate_conn_id != current_conn_id
+                    && should_switch_default_conn(current_latency, candidate_latency)
+                {
+                    tracing::info!(
+                        ?peer_node_id,
+                        ?current_conn_id,
+                        ?candidate_conn_id,
+                        current_latency,
+                        candidate_latency,
+                        "switching default peer connection after sustained latency improvement"
+                    );
+                    default_conn_id_copy.store(candidate_conn_id);
                 }
             }
         }));
@@ -154,13 +229,23 @@ impl Peer {
             return Some(conn.clone());
         }
 
-        // find a conn with the smallest latency
+        // Prefer a measured connection. A new connection reports zero latency until
+        // the first ping result arrives, so treating zero as "best" can cause an
+        // unnecessary path flip just when the new path is least proven.
         let mut min_latency = u64::MAX;
+        let mut fallback_conn_id = None;
         for conn in self.conns.iter() {
             let latency = conn.value().get_stats().latency_us;
-            if latency < min_latency {
+            fallback_conn_id.get_or_insert(*conn.key());
+            if latency > 0 && latency < min_latency {
                 min_latency = latency;
                 self.default_conn_id.store(conn.get_conn_id());
+            }
+        }
+
+        if min_latency == u64::MAX {
+            if let Some(conn_id) = fallback_conn_id {
+                self.default_conn_id.store(conn_id);
             }
         }
 
@@ -250,7 +335,17 @@ mod tests {
         tunnel::ring::create_ring_tunnel_pair,
     };
 
-    use super::Peer;
+    use super::{should_switch_default_conn, Peer};
+
+    #[test]
+    fn default_conn_switch_requires_real_improvement() {
+        assert!(!should_switch_default_conn(0, 10_000));
+        assert!(!should_switch_default_conn(50_000, 0));
+        assert!(!should_switch_default_conn(50_000, 45_000));
+        assert!(!should_switch_default_conn(50_000, 41_000));
+        assert!(should_switch_default_conn(50_000, 40_000));
+        assert!(should_switch_default_conn(100_000, 70_000));
+    }
 
     #[tokio::test]
     async fn close_peer() {

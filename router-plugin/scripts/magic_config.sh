@@ -14,6 +14,8 @@ LOG_KEEP_BYTES="65536"
 INTERNAL_LOG_MAX_BYTES="65536"
 INTERNAL_LOG_KEEP_BYTES="32768"
 RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"
+RSS_HARD_LIMIT_KB="${magic_rss_hard_limit_kb:-98304}"
+RSS_OVER_LIMIT_MAX=3
 RSS_RESTART_STATE="/tmp/magic_rss_restart.state"
 RSS_RESTART_WINDOW=600
 RSS_RESTART_MAX=3
@@ -133,6 +135,7 @@ start_monitor() {
     (
         LAST_WAN_IP="$(get_wan_ipv4 2>/dev/null)"
         WAN_WAS_DOWN=0
+        RSS_OVER_LIMIT_COUNT=0
         while :; do
             sleep 20
             PID=""
@@ -175,22 +178,12 @@ start_monitor() {
             if [ -z "${CURRENT_WAN_IP}" ]; then
                 [ -z "${LAST_WAN_IP}" ] || WAN_WAS_DOWN=1
             else
-                WAN_REBUILD=0
                 if [ "${WAN_WAS_DOWN}" = "1" ]; then
                     log_user "⚠ 检测到 WAN 连接恢复，当前地址：${CURRENT_WAN_IP}。"
-                    WAN_REBUILD=1
+                    log_user "保持 MagicTier 核心运行，由核心自动恢复 Peer 连接，避免远程桌面因重启核心而断开。"
                 elif [ -n "${LAST_WAN_IP}" ] && [ "${CURRENT_WAN_IP}" != "${LAST_WAN_IP}" ]; then
                     log_user "⚠ 检测到 WAN 地址变化：${LAST_WAN_IP} → ${CURRENT_WAN_IP}。"
-                    WAN_REBUILD=1
-                fi
-                if [ "${WAN_REBUILD}" = "1" ]; then
-                    log_user "正在重建 MagicTier 组网连接，不会重启路由器。"
-                    kill "${PID}" 2>/dev/null
-                    sleep 2
-                    pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
-                    rm -f "${PIDFILE}" "${MONITOR_PIDFILE}"
-                    ( sleep 2; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
-                    exit 0
+                    log_user "保持 MagicTier 核心运行，由核心自动重连，不主动重启核心。"
                 fi
                 LAST_WAN_IP="${CURRENT_WAN_IP}"
                 WAN_WAS_DOWN=0
@@ -198,7 +191,23 @@ start_monitor() {
 
             RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"
             [ -n "${RSS}" ] || RSS=0
-            if [ "${RSS}" -gt "${RSS_LIMIT_KB}" ] 2>/dev/null; then
+            RSS_TRIGGER=0
+            if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
+                RSS_TRIGGER=1
+                RSS_OVER_LIMIT_COUNT="${RSS_OVER_LIMIT_MAX}"
+            elif [ "${RSS}" -gt "${RSS_LIMIT_KB}" ] 2>/dev/null; then
+                RSS_OVER_LIMIT_COUNT=$((RSS_OVER_LIMIT_COUNT + 1))
+                if [ "${RSS_OVER_LIMIT_COUNT}" -eq 1 ]; then
+                    log_user "⚠ MagicTier RSS ${RSS}KB 超过观察线 ${RSS_LIMIT_KB}KB，将继续观察，避免瞬时流量峰值误重启。"
+                fi
+                if [ "${RSS_OVER_LIMIT_COUNT}" -ge "${RSS_OVER_LIMIT_MAX}" ] 2>/dev/null; then
+                    RSS_TRIGGER=1
+                fi
+            else
+                RSS_OVER_LIMIT_COUNT=0
+            fi
+
+            if [ "${RSS_TRIGGER}" = "1" ]; then
                 NOW="$(date +%s 2>/dev/null)"
                 [ -n "${NOW}" ] || NOW=0
                 WINDOW_START=0
@@ -215,7 +224,11 @@ start_monitor() {
                 RESTART_COUNT=$((RESTART_COUNT + 1))
                 echo "${WINDOW_START} ${RESTART_COUNT}" > "${RSS_RESTART_STATE}" 2>/dev/null
 
-                log_user "⚠ 内存保护触发：MagicTier RSS ${RSS}KB 超过 ${RSS_LIMIT_KB}KB。"
+                if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
+                    log_user "⚠ 内存保护触发：MagicTier RSS ${RSS}KB 超过硬限制 ${RSS_HARD_LIMIT_KB}KB。"
+                else
+                    log_user "⚠ 内存保护触发：MagicTier RSS 已连续 ${RSS_OVER_LIMIT_COUNT} 次超过 ${RSS_LIMIT_KB}KB。"
+                fi
                 kill "${PID}" 2>/dev/null
                 sleep 2
                 pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
@@ -273,11 +286,7 @@ start_service() {
     [ -z "${magic_listeners}" ] || set -- "$@" --listeners "${magic_listeners}"
     [ -z "${magic_proxy_networks}" ] || set -- "$@" --proxy-networks "${magic_proxy_networks}"
 
-    if command -v nice >/dev/null 2>&1; then
-        MAGICTIER_USER_EVENT_LOG="${LOGFILE}" nice -n 5 "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
-    else
-        MAGICTIER_USER_EVENT_LOG="${LOGFILE}" "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
-    fi
+    MAGICTIER_USER_EVENT_LOG="${LOGFILE}" "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
     echo $! > "${PIDFILE}"
     sleep 2
 
