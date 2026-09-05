@@ -17,6 +17,10 @@ RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"
 RSS_RESTART_STATE="/tmp/magic_rss_restart.state"
 RSS_RESTART_WINDOW=600
 RSS_RESTART_MAX=3
+CRASH_RESTART_STATE="/tmp/magic_crash_restart.state"
+CRASH_RESTART_WINDOW=600
+CRASH_RESTART_MAX=3
+STOP_MARKER="/tmp/magic_intentional_stop"
 LOCK_DIR="/tmp/magic_config.lock"
 
 mkdir -p /tmp/upload
@@ -107,6 +111,7 @@ stop_monitor() {
 }
 
 stop_service() {
+    : > "${STOP_MARKER}"
     stop_monitor
     if is_running; then
         PID="$(cat "${PIDFILE}")"
@@ -130,9 +135,40 @@ start_monitor() {
         WAN_WAS_DOWN=0
         while :; do
             sleep 20
-            [ -f "${PIDFILE}" ] || exit 0
-            PID="$(cat "${PIDFILE}" 2>/dev/null)"
-            pid_is_core "${PID}" || exit 0
+            PID=""
+            [ ! -f "${PIDFILE}" ] || PID="$(cat "${PIDFILE}" 2>/dev/null)"
+            if [ -z "${PID}" ] || ! pid_is_core "${PID}" || ! kill -0 "${PID}" 2>/dev/null; then
+                [ ! -f "${STOP_MARKER}" ] || exit 0
+                ENABLED="$(dbus get magic_enable 2>/dev/null)"
+                [ "${ENABLED}" = "1" ] || exit 0
+
+                NOW="$(date +%s 2>/dev/null)"
+                [ -n "${NOW}" ] || NOW=0
+                WINDOW_START=0
+                RESTART_COUNT=0
+                if [ -f "${CRASH_RESTART_STATE}" ]; then
+                    read WINDOW_START RESTART_COUNT < "${CRASH_RESTART_STATE}" 2>/dev/null
+                fi
+                [ -n "${WINDOW_START}" ] || WINDOW_START=0
+                [ -n "${RESTART_COUNT}" ] || RESTART_COUNT=0
+                if [ "${NOW}" -eq 0 ] || [ $((NOW - WINDOW_START)) -gt "${CRASH_RESTART_WINDOW}" ] 2>/dev/null; then
+                    WINDOW_START="${NOW}"
+                    RESTART_COUNT=0
+                fi
+                RESTART_COUNT=$((RESTART_COUNT + 1))
+                echo "${WINDOW_START} ${RESTART_COUNT}" > "${CRASH_RESTART_STATE}" 2>/dev/null
+                rm -f "${PIDFILE}" "${MONITOR_PIDFILE}"
+
+                if [ "${RESTART_COUNT}" -le "${CRASH_RESTART_MAX}" ] 2>/dev/null; then
+                    log_user "⚠ 检测到 MagicTier 核心程序异常退出。"
+                    log_user "正在自动恢复组网连接，不会重启路由器。"
+                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
+                else
+                    log_user "✗ MagicTier 核心程序在10分钟内连续异常超过3次，已停止自动运行以保护路由器。"
+                    dbus set magic_enable="0"
+                fi
+                exit 0
+            fi
             trim_logs
 
             CURRENT_WAN_IP="$(get_wan_ipv4 2>/dev/null)"
@@ -208,6 +244,7 @@ start_service() {
     }
 
     stop_service
+    rm -f "${STOP_MARKER}"
     [ "${MAGICTIER_PRESERVE_LOG}" = "1" ] || : > "${LOGFILE}"
     : > "${INTERNAL_LOGFILE}"
 

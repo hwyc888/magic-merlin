@@ -188,8 +188,8 @@ jobs:
           grep -q 'magic_internal.log' router-plugin/scripts/magic_config.sh
           grep -q '组网状态日志' router-plugin/webs/Module_magic.asp
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
-          test "$(cat router-plugin/version)" = "1.1.2"
-          grep -q '"version": "1.1.2"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.1.3"
+          grep -q '"version": "1.1.3"' router-plugin/config.json.js
           grep -q 'INSTALL_DIR="/koolshare/magic"' router-plugin/install.sh
           grep -q 'OWNER_MARKER="${INSTALL_DIR}/.magic-owned"' router-plugin/install.sh
           grep -q 'LEGACY_OWNER_MARKER="${INSTALL_DIR}/.magictier-owned"' router-plugin/install.sh
@@ -210,6 +210,14 @@ jobs:
           grep -q 'RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"' router-plugin/scripts/magic_config.sh
           grep -q 'sleep 20' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
+          grep -q 'CRASH_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
+          grep -q 'CRASH_RESTART_STATE="/tmp/magic_crash_restart.state"' router-plugin/scripts/magic_config.sh
+          grep -q 'STOP_MARKER="/tmp/magic_intentional_stop"' router-plugin/scripts/magic_config.sh
+          grep -q '检测到 MagicTier 核心程序异常退出' router-plugin/scripts/magic_config.sh
+          grep -q '正在自动恢复组网连接，不会重启路由器' router-plugin/scripts/magic_config.sh
+          grep -q '连续异常超过3次' router-plugin/scripts/magic_config.sh
+          grep -q '插件启用后自动守护核心进程' router-plugin/webs/Module_magic.asp
+          ! grep -q '实时进程守护' router-plugin/webs/Module_magic.asp
           grep -q 'get_wan_ipv4' router-plugin/scripts/magic_config.sh
           grep -q 'WAN 地址变化' router-plugin/scripts/magic_config.sh
           grep -q 'WAN 连接恢复' router-plugin/scripts/magic_config.sh
