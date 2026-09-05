@@ -50,6 +50,31 @@ is_running() {
     pid_is_core "${PID}" && kill -0 "${PID}" 2>/dev/null
 }
 
+get_wan_ipv4() {
+    for KEY in wan0_ipaddr wan_ipaddr wan1_ipaddr; do
+        WAN_IP="$(nvram get "${KEY}" 2>/dev/null)"
+        case "${WAN_IP}" in
+            ''|0.0.0.0|169.254.*) ;;
+            *) echo "${WAN_IP}"; return 0 ;;
+        esac
+    done
+    if command -v ip >/dev/null 2>&1; then
+        WAN_IP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+        case "${WAN_IP}" in
+            ''|0.0.0.0|169.254.*) ;;
+            *) echo "${WAN_IP}"; return 0 ;;
+        esac
+    fi
+    return 1
+}
+
+is_init_invocation() {
+    case "$0" in
+        /koolshare/init.d/S97magic.sh|/koolshare/init.d/N97magic.sh) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 trim_one_log() {
     FILE="$1"
     MAX_BYTES="$2"
@@ -101,12 +126,29 @@ stop_service() {
 start_monitor() {
     stop_monitor
     (
+        LAST_WAN_IP="$(get_wan_ipv4 2>/dev/null)"
         while :; do
             sleep 20
             [ -f "${PIDFILE}" ] || exit 0
             PID="$(cat "${PIDFILE}" 2>/dev/null)"
             pid_is_core "${PID}" || exit 0
             trim_logs
+
+            CURRENT_WAN_IP="$(get_wan_ipv4 2>/dev/null)"
+            if [ -n "${CURRENT_WAN_IP}" ]; then
+                if [ -n "${LAST_WAN_IP}" ] && [ "${CURRENT_WAN_IP}" != "${LAST_WAN_IP}" ]; then
+                    log_user "⚠ 检测到 WAN 地址变化：${LAST_WAN_IP} → ${CURRENT_WAN_IP}。"
+                    log_user "正在重建 MagicTier 组网连接，不会重启路由器。"
+                    kill "${PID}" 2>/dev/null
+                    sleep 2
+                    pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
+                    rm -f "${PIDFILE}" "${MONITOR_PIDFILE}"
+                    ( sleep 2; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
+                    exit 0
+                fi
+                LAST_WAN_IP="${CURRENT_WAN_IP}"
+            fi
+
             RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"
             [ -n "${RSS}" ] || RSS=0
             if [ "${RSS}" -gt "${RSS_LIMIT_KB}" ] 2>/dev/null; then
@@ -135,7 +177,7 @@ start_monitor() {
                 if [ "${RESTART_COUNT}" -le "${RSS_RESTART_MAX}" ] 2>/dev/null; then
                     log_user "正在自动重启 MagicTier 核心程序，不会重启路由器。"
                     rm -f "${MONITOR_PIDFILE}"
-                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh start >/dev/null 2>&1 ) &
+                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
                 else
                     log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
                     dbus set magic_enable="0"
@@ -223,22 +265,37 @@ case "${ACTION}:$2" in
 esac
 
 case "${ACTION}" in
+    boot)
+        [ "${magic_enable}" = "1" ] || exit 0
+        start_service
+        exit $?
+        ;;
     start)
-        dbus set magic_enable="1"
-        magic_enable="1"
+        if is_init_invocation; then
+            [ "${magic_enable}" = "1" ] || exit 0
+        else
+            dbus set magic_enable="1"
+            magic_enable="1"
+        fi
         start_service
         exit $?
         ;;
     stop)
-        dbus set magic_enable="0"
-        magic_enable="0"
+        if ! is_init_invocation; then
+            dbus set magic_enable="0"
+            magic_enable="0"
+        fi
         stop_service
         log_user "MagicTier已停止。"
         exit $?
         ;;
     restart)
-        dbus set magic_enable="1"
-        magic_enable="1"
+        if is_init_invocation; then
+            [ "${magic_enable}" = "1" ] || exit 0
+        else
+            dbus set magic_enable="1"
+            magic_enable="1"
+        fi
         stop_service
         start_service
         exit $?
