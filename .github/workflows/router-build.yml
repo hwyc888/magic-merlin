@@ -174,7 +174,8 @@ jobs:
           grep -q 'magic_rss_limit_kb' router-plugin/scripts/magic_config.sh
           ! grep -q 'magictier-cli' router-plugin/install.sh
           grep -q 'armv7l' router-plugin/install.sh
-          grep -q 'import_from_clipboard' router-plugin/webs/Module_magic.asp
+          ! grep -q 'import_from_clipboard' router-plugin/webs/Module_magic.asp
+          ! grep -q '从剪贴板导入' router-plugin/webs/Module_magic.asp
           grep -q 'import_config_text' router-plugin/webs/Module_magic.asp
           grep -q 'show_config' router-plugin/webs/Module_magic.asp
           grep -q 'download_config_text' router-plugin/webs/Module_magic.asp
@@ -187,8 +188,8 @@ jobs:
           grep -q 'magic_internal.log' router-plugin/scripts/magic_config.sh
           grep -q '组网状态日志' router-plugin/webs/Module_magic.asp
           grep -q '已成功加入网络' magictier/src/instance_manager.rs
-          test "$(cat router-plugin/version)" = "1.1.1"
-          grep -q '"version": "1.1.1"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.1.2"
+          grep -q '"version": "1.1.2"' router-plugin/config.json.js
           grep -q 'INSTALL_DIR="/koolshare/magic"' router-plugin/install.sh
           grep -q 'OWNER_MARKER="${INSTALL_DIR}/.magic-owned"' router-plugin/install.sh
           grep -q 'LEGACY_OWNER_MARKER="${INSTALL_DIR}/.magictier-owned"' router-plugin/install.sh

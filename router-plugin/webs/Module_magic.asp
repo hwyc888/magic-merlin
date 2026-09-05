@@ -204,14 +204,6 @@ function import_config_text(text){
     return true;
 }
 function import_from_textarea(){if(import_config_text(E("magic_import_text").value))hide_import();}
-function import_from_clipboard(){
-    if(navigator.clipboard&&navigator.clipboard.readText){
-        navigator.clipboard.readText().then(function(t){if(!import_config_text(t))show_import();}).catch(function(){show_import();alert("浏览器未允许直接读取剪贴板，请在文本框中粘贴配置后导入。");});
-    }else{
-        show_import();
-        alert("当前浏览器不支持直接读取剪贴板，请在文本框中粘贴配置后导入。");
-    }
-}
 function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 </script>
 </head>
@@ -231,7 +223,7 @@ function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 <tr><th>状态</th><td><span id="run_state">检测中</span>　PID: <span id="run_pid">-</span>　RSS: <span id="run_rss">-</span></td></tr>
 <tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看组网日志" /></td></tr></table>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
-<tr><th>配置管理</th><td><input class="button_gen" type="button" onclick="import_from_clipboard();" value="从剪贴板导入" />&nbsp;<input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" />&nbsp;<input class="button_gen" type="button" onclick="show_config();" value="查看配置" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出文本" /></td></tr>
+<tr><th>配置管理</th><td><input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" />&nbsp;<input class="button_gen" type="button" onclick="show_config();" value="查看配置" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出文本" /></td></tr>
 <tr><th>启用 MagicTier</th><td><input id="magic_enable" type="checkbox" /></td></tr>
 <tr><th>主机名</th><td><input id="magic_hostname" class="input_ss_table" maxlength="128" placeholder="my-node" /></td></tr>
 <tr><th>实例名称</th><td><input id="magic_instance_name" class="input_ss_table" maxlength="128" placeholder="default" /></td></tr>
