@@ -116,6 +116,8 @@ start_service() {
     trim_log
 
     set -- "${BIN}" --console-log-level warn --file-log-level off
+    [ -z "${magictier_hostname}" ] || set -- "$@" --hostname "${magictier_hostname}"
+    [ -z "${magictier_instance_name}" ] || set -- "$@" --instance-name "${magictier_instance_name}"
     [ -z "${magictier_network_name}" ] || set -- "$@" --network-name "${magictier_network_name}"
     [ -z "${magictier_network_secret}" ] || set -- "$@" --network-secret "${magictier_network_secret}"
     [ -z "${magictier_ipv4}" ] || set -- "$@" --ipv4 "${magictier_ipv4}"

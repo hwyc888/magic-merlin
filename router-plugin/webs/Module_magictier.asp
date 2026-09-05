@@ -18,6 +18,9 @@
 #magictier_log_mask{display:none;position:fixed;z-index:998;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.55)}
 #magictier_log_box{display:none;position:fixed;z-index:999;left:50%;top:50%;transform:translate(-50%,-50%);width:720px;max-width:92%;background:#2f3a3e;border-radius:4px;padding:12px;box-shadow:0 0 18px #000}
 #magictier_log_text{width:98%;height:360px;background:#000;color:#fff;border:1px solid #666;font-family:monospace;font-size:12px;resize:none}
+#magictier_import_mask{display:none;position:fixed;z-index:998;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,.55)}
+#magictier_import_box{display:none;position:fixed;z-index:999;left:50%;top:50%;transform:translate(-50%,-50%);width:720px;max-width:92%;background:#2f3a3e;border-radius:4px;padding:12px;box-shadow:0 0 18px #000}
+#magictier_import_text{width:98%;height:360px;background:#111;color:#fff;border:1px solid #666;font-family:monospace;font-size:13px;resize:vertical}
 </style>
 <script type="text/javascript">
 var db_magictier = {};
@@ -32,7 +35,7 @@ function init(){
     $.ajax({type:"GET",url:"/_api/magictier",dataType:"json",async:false,success:function(data){
         db_magictier=(data.result&&data.result[0])?data.result[0]:{};
         E("magictier_enable").checked=db_magictier.magictier_enable=="1";
-        ["network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){if(db_magictier["magictier_"+k]!==undefined)E("magictier_"+k).value=db_magictier["magictier_"+k];});
+        ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){if(db_magictier["magictier_"+k]!==undefined)E("magictier_"+k).value=db_magictier["magictier_"+k];});
         E("magictier_version").innerHTML=db_magictier.magictier_version||"-";
     }});
     refresh_status();
@@ -40,7 +43,7 @@ function init(){
 }
 function save(){
     db_magictier.magictier_enable=E("magictier_enable").checked?"1":"0";
-    ["network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){db_magictier["magictier_"+k]=E("magictier_"+k).value;});
+    ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){db_magictier["magictier_"+k]=E("magictier_"+k).value;});
     showLoading(3);
     api("magictier_config.sh",[1],db_magictier,function(){setTimeout(function(){location.reload();},2200);});
 }
@@ -67,6 +70,53 @@ function load_log(){
     $.ajax({url:"/_temp/magictier_log.txt?_="+new Date().getTime(),type:"GET",cache:false,dataType:"text",success:function(t){E("magictier_log_text").value=t||"";E("magictier_log_text").scrollTop=E("magictier_log_text").scrollHeight;},error:function(){E("magictier_log_text").value="暂无日志";}});
 }
 function clear_log(){api("magictier_config.sh",[5],{},function(){setTimeout(load_log,200);});}
+function show_import(){E("magictier_import_mask").style.display="block";E("magictier_import_box").style.display="block";E("magictier_import_text").focus();}
+function hide_import(){E("magictier_import_mask").style.display="none";E("magictier_import_box").style.display="none";}
+function toml_value(line){
+    var p=line.indexOf("=");
+    if(p<0)return "";
+    var v=line.substring(p+1).replace(/^\s+|\s+$/g,"");
+    if(v.length>=2&&v.charAt(0)==='"'&&v.charAt(v.length-1)==='"'){
+        v=v.substring(1,v.length-1).replace(/\\n/g,"\n").replace(/\\r/g,"\r").replace(/\\t/g,"\t").replace(/\\\"/g,'"').replace(/\\\\/g,"\\");
+    }else if(v.length>=2&&v.charAt(0)==="'"&&v.charAt(v.length-1)==="'"){
+        v=v.substring(1,v.length-1);
+    }
+    return v;
+}
+function import_config_text(text){
+    var lines=(text||"").replace(/\r/g,"").split("\n");
+    var section="", peers=[], proxy=[];
+    var data={hostname:"",instance_name:"",network_name:"",network_secret:"",ipv4:""};
+    for(var i=0;i<lines.length;i++){
+        var line=lines[i].replace(/^\s+|\s+$/g,"");
+        if(!line||line.charAt(0)==="#")continue;
+        if(line==="[network_identity]"){section="network_identity";continue;}
+        if(line==="[[peer]]"){section="peer";continue;}
+        if(line==="[[proxy_network]]"){section="proxy_network";continue;}
+        if(line.charAt(0)==="["){section="";continue;}
+        var key=line.split("=",1)[0].replace(/^\s+|\s+$/g,"");
+        var val=toml_value(line);
+        if(section==="network_identity"&&(key==="network_name"||key==="network_secret"))data[key]=val;
+        else if(section==="peer"&&key==="uri"&&val)peers.push(val);
+        else if(section==="proxy_network"&&key==="cidr"&&val)proxy.push(val);
+        else if(!section&&(key==="hostname"||key==="instance_name"||key==="ipv4"))data[key]=val;
+    }
+    if(!data.network_name&&!data.network_secret&&!data.ipv4&&!data.hostname&&!data.instance_name&&!peers.length&&!proxy.length){alert("未识别到有效的 MagicTier 配置，请检查格式。");return false;}
+    ["hostname","instance_name","network_name","network_secret","ipv4"].forEach(function(k){if(data[k]!=="")E("magictier_"+k).value=data[k];});
+    if(peers.length)E("magictier_peers").value=peers.join(",");
+    if(proxy.length)E("magictier_proxy_networks").value=proxy.join(",");
+    alert("配置已导入到页面，请检查后点击“保存并应用”。");
+    return true;
+}
+function import_from_textarea(){if(import_config_text(E("magictier_import_text").value))hide_import();}
+function import_from_clipboard(){
+    if(navigator.clipboard&&navigator.clipboard.readText){
+        navigator.clipboard.readText().then(function(t){if(!import_config_text(t))show_import();}).catch(function(){show_import();alert("浏览器未允许直接读取剪贴板，请在文本框中粘贴配置后导入。");});
+    }else{
+        show_import();
+        alert("当前浏览器不支持直接读取剪贴板，请在文本框中粘贴配置后导入。");
+    }
+}
 function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 </script>
 </head>
@@ -74,15 +124,20 @@ function reload_Soft_Center(){location.href="/Module_Softcenter.asp";}
 <div id="TopBanner"></div><div id="Loading" class="popup_bg"></div>
 <div id="magictier_log_mask" onclick="hide_log();"></div>
 <div id="magictier_log_box"><div style="color:#fff;font-size:16px;margin-bottom:8px;">MagicTier 运行日志</div><textarea id="magictier_log_text" readonly="readonly"></textarea><div style="text-align:center;margin-top:10px;"><input class="button_gen" type="button" onclick="load_log();" value="刷新" />&nbsp;<input class="button_gen" type="button" onclick="clear_log();" value="清空日志" />&nbsp;<input class="button_gen" type="button" onclick="hide_log();" value="关闭" /></div></div>
+<div id="magictier_import_mask" onclick="hide_import();"></div>
+<div id="magictier_import_box"><div style="color:#fff;font-size:16px;margin-bottom:8px;">粘贴 MagicTier TOML 配置</div><textarea id="magictier_import_text" placeholder="hostname = &quot;my-node&quot;&#10;instance_name = &quot;default&quot;&#10;ipv4 = &quot;10.126.126.50/24&quot;&#10;&#10;[network_identity]&#10;network_name = &quot;company_vpn&quot;&#10;network_secret = &quot;...&quot;"></textarea><div style="text-align:center;margin-top:10px;"><input class="button_gen" type="button" onclick="import_from_textarea();" value="导入到表单" />&nbsp;<input class="button_gen" type="button" onclick="hide_import();" value="关闭" /></div></div>
 <table class="content" align="center" cellpadding="0" cellspacing="0"><tr><td width="17">&nbsp;</td><td valign="top" width="202"><div id="mainMenu"></div><div id="subMenu"></div></td><td valign="top"><div id="tabMenu" class="submenuBlock"></div>
 <table width="98%" border="0" align="left" cellpadding="0" cellspacing="0"><tr><td align="left" valign="top"><table width="760px" border="0" cellpadding="5" cellspacing="0" class="FormTitle"><tr><td bgcolor="#4D595D" colspan="3" valign="top">
 <div>&nbsp;</div><div style="float:left;" class="formfonttitle">MagicTier</div><div style="float:right;width:15px;height:25px;margin-top:10px"><img onclick="reload_Soft_Center();" align="right" style="cursor:pointer;position:absolute;margin-left:-30px;margin-top:-25px;" title="返回软件中心" src="/images/backprev.png" /></div><div style="margin:30px 0 10px 5px;" class="splitLine"></div>
-<div class="formfontdesc">MagicTier ARM64 组网插件。当前版本：<span id="magictier_version">-</span></div>
+<div class="formfontdesc">MagicTier ARMv7/ARM64 组网插件。当前版本：<span id="magictier_version">-</span></div>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行状态</td></tr></thead>
 <tr><th>状态</th><td><span id="run_state">检测中</span>　PID: <span id="run_pid">-</span>　RSS: <span id="run_rss">-</span></td></tr>
 <tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看日志" /></td></tr></table>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
+<tr><th>导入配置</th><td><input class="button_gen" type="button" onclick="import_from_clipboard();" value="从剪贴板导入" />&nbsp;<input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" /></td></tr>
 <tr><th>启用 MagicTier</th><td><input id="magictier_enable" type="checkbox" /></td></tr>
+<tr><th>主机名</th><td><input id="magictier_hostname" class="input_ss_table" maxlength="128" placeholder="my-node" /></td></tr>
+<tr><th>实例名称</th><td><input id="magictier_instance_name" class="input_ss_table" maxlength="128" placeholder="default" /></td></tr>
 <tr><th>网络名称</th><td><input id="magictier_network_name" class="input_ss_table" maxlength="128" /></td></tr>
 <tr><th>网络密钥</th><td><input id="magictier_network_secret" type="password" class="input_ss_table" maxlength="256" autocomplete="new-password" /></td></tr>
 <tr><th>虚拟 IPv4</th><td><input id="magictier_ipv4" class="input_ss_table" maxlength="64" placeholder="10.144.144.1/24" /></td></tr>

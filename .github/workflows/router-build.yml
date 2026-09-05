@@ -88,6 +88,10 @@ jobs:
           grep -q 'magictier_rss_limit_kb' router-plugin/scripts/magictier_config.sh
           ! grep -q 'magictier-cli' router-plugin/install.sh
           grep -q 'armv7l' router-plugin/install.sh
+          grep -q 'import_from_clipboard' router-plugin/webs/Module_magictier.asp
+          grep -q 'import_config_text' router-plugin/webs/Module_magictier.asp
+          grep -q -- '--hostname' router-plugin/scripts/magictier_config.sh
+          grep -q -- '--instance-name' router-plugin/scripts/magictier_config.sh
 
       - name: Create router packages
         run: |
