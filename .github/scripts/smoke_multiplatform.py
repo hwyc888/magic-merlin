@@ -75,12 +75,20 @@ def main():
         portal = f"127.0.0.1:{rpc_port}"
         with tempfile.TemporaryDirectory(prefix="magictier-smoke-") as temp:
             log_path = Path(temp) / "core.log"
+            # CLI-created configurations are intentionally READ_ONLY. Use a
+            # disposable writable TOML file to test the actual mutation API.
+            config_path = Path(temp) / "network.toml"
+            config_path.write_text(
+                'listeners = []\nstun_servers = []\nstun_servers_v6 = []\n'
+                '[network_identity]\nnetwork_name = "ci-smoke"\n'
+                'network_secret = "ci-only-not-a-production-secret"\n'
+                '[flags]\nno_tun = true\nenable_ipv6 = false\n',
+                encoding="utf-8",
+            )
             with log_path.open("w", encoding="utf-8") as log:
                 process = subprocess.Popen([
-                    str(core), "--no-tun", "--no-listener", "--disable-ipv6",
-                    "--rpc-portal", portal, "--network-name", "ci-smoke",
-                    "--network-secret", "ci-only-not-a-production-secret",
-                    "--stun-servers=", "--stun-servers-v6=",
+                    str(core), "--config-file", str(config_path),
+                    "--rpc-portal", portal,
                 ], cwd=temp, env=env, stdout=log, stderr=subprocess.STDOUT)
                 try:
                     deadline = time.monotonic() + 60
