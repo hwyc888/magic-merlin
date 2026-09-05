@@ -1,0 +1,232 @@
+name: Build MagicTier Windows Linux and ARM
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'magictier/**'
+      - '.github/workflows/multiplatform-build.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: magictier-multiplatform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x64:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.89
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build Windows x64 core
+        working-directory: magictier
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc --bin magictier-core
+
+      - name: Build slim Windows x64 CLI
+        working-directory: magictier
+        run: cargo build --profile cli-small --locked --no-default-features --target x86_64-pc-windows-msvc --bin magictier-cli
+
+      - name: Verify Windows binaries
+        shell: pwsh
+        run: |
+          $core = "magictier/target/x86_64-pc-windows-msvc/release/magictier-core.exe"
+          $cli = "magictier/target/x86_64-pc-windows-msvc/cli-small/magictier-cli.exe"
+          if (!(Test-Path $core)) { throw "missing $core" }
+          if (!(Test-Path $cli)) { throw "missing $cli" }
+          & $core --version
+          & $cli --help | Select-Object -First 20
+          New-Item -ItemType Directory -Force -Path out/windows-x64 | Out-Null
+          Copy-Item $core out/windows-x64/magictier-core.exe
+          Copy-Item $cli out/windows-x64/magictier-cli.exe
+          Get-Item out/windows-x64/* | Select-Object Name,Length
+
+      - name: Upload Windows x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: magictier-windows-x64
+          path: out/windows-x64/*
+          if-no-files-found: error
+          retention-days: 30
+
+  linux:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            target: x86_64-unknown-linux-musl
+            out: linux-x64
+            arch_pattern: 'x86-64'
+          - name: Linux ARM64
+            target: aarch64-unknown-linux-musl
+            out: linux-arm64
+            arch_pattern: 'ARM aarch64'
+          - name: Linux ARMv7
+            target: armv7-unknown-linux-musleabihf
+            out: linux-armv7
+            arch_pattern: 'ARM, EABI5'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y file musl-tools
+
+      - name: Install Rust 1.89 target
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89.0
+          targets: ${{ matrix.target }}
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.13.0
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Build Linux core
+        working-directory: magictier
+        run: cargo zigbuild --release --locked --target ${{ matrix.target }} --bin magictier-core
+
+      - name: Build slim Linux CLI
+        working-directory: magictier
+        run: cargo zigbuild --profile cli-small --locked --no-default-features --target ${{ matrix.target }} --bin magictier-cli
+
+      - name: Verify Linux binaries
+        env:
+          TARGET: ${{ matrix.target }}
+          OUT: ${{ matrix.out }}
+          ARCH_PATTERN: ${{ matrix.arch_pattern }}
+        run: |
+          set -eux
+          core="magictier/target/${TARGET}/release/magictier-core"
+          cli="magictier/target/${TARGET}/cli-small/magictier-cli"
+          test -x "${core}"
+          test -x "${cli}"
+          file "${core}" | tee /tmp/core-file.txt
+          file "${cli}" | tee /tmp/cli-file.txt
+          grep -q "${ARCH_PATTERN}" /tmp/core-file.txt
+          grep -q "${ARCH_PATTERN}" /tmp/cli-file.txt
+          grep -q 'statically linked' /tmp/core-file.txt
+          grep -q 'statically linked' /tmp/cli-file.txt
+          mkdir -p "out/${OUT}"
+          install -m 0755 "${core}" "out/${OUT}/magictier-core"
+          install -m 0755 "${cli}" "out/${OUT}/magictier-cli"
+          ls -lh "out/${OUT}"
+
+      - name: Smoke test native Linux x64
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          set -eux
+          magictier/target/x86_64-unknown-linux-musl/release/magictier-core --version
+          magictier/target/x86_64-unknown-linux-musl/cli-small/magictier-cli --help | head -20
+
+      - name: Upload Linux target
+        uses: actions/upload-artifact@v4
+        with:
+          name: magictier-${{ matrix.out }}
+          path: out/${{ matrix.out }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+  package:
+    runs-on: ubuntu-24.04
+    needs: [windows-x64, linux]
+    steps:
+      - name: Download all platform binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: magictier-*
+          path: DIST
+
+      - name: Normalize package layout and checksums
+        run: |
+          set -eux
+          find DIST -maxdepth 3 -type f -print
+          mkdir -p package/windows-x64 package/linux-x64 package/linux-arm64 package/linux-armv7
+          cp DIST/magictier-windows-x64/* package/windows-x64/
+          cp DIST/magictier-linux-x64/* package/linux-x64/
+          cp DIST/magictier-linux-arm64/* package/linux-arm64/
+          cp DIST/magictier-linux-armv7/* package/linux-armv7/
+          (cd package && sha256sum windows-x64/* linux-x64/* linux-arm64/* linux-armv7/* > SHA256SUMS.txt)
+          find package -maxdepth 2 -type f -exec ls -lh {} \;
+
+      - name: Upload complete multi-platform package
+        uses: actions/upload-artifact@v4
+        with:
+          name: magic-merlin-multiplatform
+          path: package/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Keep only latest successful multi-platform run
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          token = os.environ["GH_TOKEN"]
+          repository = os.environ["REPOSITORY"]
+          current_run_id = int(os.environ["CURRENT_RUN_ID"])
+          workflow = "multiplatform-build.yml"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "magic-merlin-multiplatform-cleanup",
+          }
+
+          def get_json(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req) as response:
+                  return json.load(response)
+
+          page = 1
+          old_runs = []
+          while True:
+              url = (
+                  f"https://api.github.com/repos/{repository}/actions/workflows/"
+                  f"{workflow}/runs?per_page=100&page={page}"
+              )
+              runs = get_json(url).get("workflow_runs", [])
+              old_runs.extend(run for run in runs if int(run["id"]) != current_run_id)
+              if len(runs) < 100:
+                  break
+              page += 1
+
+          for run in old_runs:
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}/actions/runs/{run['id']}",
+                  headers=headers,
+                  method="DELETE",
+              )
+              try:
+                  with urllib.request.urlopen(req):
+                      pass
+                  print(f"deleted old run {run['id']}")
+              except Exception as exc:
+                  print(f"warning: failed to delete run {run['id']}: {exc}")
+          PY
