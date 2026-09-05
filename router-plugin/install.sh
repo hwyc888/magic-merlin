@@ -41,10 +41,12 @@ platform_test() {
 }
 
 install_dir_test() {
-    if [ -d "${INSTALL_DIR}" ] && [ ! -f "${OWNER_MARKER}" ]; then
-        echo_date "检测到安装目录 ${INSTALL_DIR} 已存在，可能被其他插件或程序使用。"
-        echo_date "为避免覆盖现有数据，本次安装已取消。请先检查并处理该目录后再安装。"
-        exit 1
+    if [ -e "${INSTALL_DIR}" ] || [ -L "${INSTALL_DIR}" ]; then
+        if [ ! -d "${INSTALL_DIR}" ] || [ -L "${INSTALL_DIR}" ] || [ ! -f "${OWNER_MARKER}" ]; then
+            echo_date "检测到安装路径 ${INSTALL_DIR} 已存在，可能被其他插件或程序使用。"
+            echo_date "为避免覆盖现有数据，本次安装已取消。请先检查并处理该路径后再安装。"
+            exit 1
+        fi
     fi
 }
 
