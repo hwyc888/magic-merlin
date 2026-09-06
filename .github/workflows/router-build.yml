@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -327,7 +327,7 @@ jobs:
           stat -c '%n bytes=%s' DIST/*.tar.gz
 
       - name: Upload router packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: magic-merlin-asus-router
           path: |

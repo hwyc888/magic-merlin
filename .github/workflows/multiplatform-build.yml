@@ -23,14 +23,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.89.0
       - name: Resolve one shared dependency lock for all four targets
         working-directory: magictier
         run: cargo generate-lockfile
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: magictier-build-lockfile
           path: magictier/Cargo.lock
@@ -43,7 +43,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust 1.89
         uses: dtolnay/rust-toolchain@master
@@ -52,7 +52,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Download shared dependency lock
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: magictier-build-lockfile
           path: magictier
@@ -88,7 +88,7 @@ jobs:
 
       - name: Preserve diagnostic binaries if validation fails
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagnostic-windows-x64
           path: out/windows-x64/*
@@ -96,7 +96,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Windows x64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: magictier-windows-x64
           path: out/windows-x64/*
@@ -129,7 +129,7 @@ jobs:
             runner: qemu-arm
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y file musl-tools protobuf-compiler qemu-user time
@@ -149,7 +149,7 @@ jobs:
         run: cargo install cargo-zigbuild --version 0.23.4 --locked
 
       - name: Download shared dependency lock
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: magictier-build-lockfile
           path: magictier
@@ -199,7 +199,7 @@ jobs:
 
       - name: Preserve diagnostic binaries if validation fails
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagnostic-${{ matrix.out }}
           path: out/${{ matrix.out }}/*
@@ -207,7 +207,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Linux target
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: magictier-${{ matrix.out }}
           path: out/${{ matrix.out }}/*
@@ -218,9 +218,9 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [windows-x64, linux]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Download all platform binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: magictier-*
           path: DIST
@@ -246,7 +246,7 @@ jobs:
           find package -maxdepth 2 -type f -exec ls -lh {} \;
 
       - name: Upload complete multi-platform package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: magic-merlin-multiplatform
           path: package/**
