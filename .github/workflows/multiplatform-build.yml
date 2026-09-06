@@ -253,7 +253,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Keep only latest successful multi-platform run
+      - name: Keep latest two successful multi-platform runs
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -263,6 +263,7 @@ jobs:
           python3 <<'PY'
           import json
           import os
+          import urllib.error
           import urllib.request
 
           token = os.environ["GH_TOKEN"]
@@ -277,33 +278,55 @@ jobs:
           }
 
           def get_json(url):
-              req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req) as response:
+              request = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(request) as response:
                   return json.load(response)
 
+          runs = []
           page = 1
-          old_runs = []
           while True:
               url = (
                   f"https://api.github.com/repos/{repository}/actions/workflows/"
                   f"{workflow}/runs?per_page=100&page={page}"
               )
-              runs = get_json(url).get("workflow_runs", [])
-              old_runs.extend(run for run in runs if int(run["id"]) != current_run_id)
-              if len(runs) < 100:
+              batch = get_json(url).get("workflow_runs", [])
+              runs.extend(batch)
+              if len(batch) < 100:
                   break
               page += 1
 
-          for run in old_runs:
-              req = urllib.request.Request(
-                  f"https://api.github.com/repos/{repository}/actions/runs/{run['id']}",
+          previous_successes = sorted(
+              (
+                  run
+                  for run in runs
+                  if int(run["id"]) != current_run_id
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+              ),
+              key=lambda run: (run.get("created_at", ""), int(run["id"])),
+              reverse=True,
+          )
+          keep_ids = {current_run_id}
+          if previous_successes:
+              keep_ids.add(int(previous_successes[0]["id"]))
+
+          print(f"Keeping successful run IDs: {sorted(keep_ids, reverse=True)}")
+          for run in runs:
+              run_id = int(run["id"])
+              if run_id in keep_ids or run.get("status") != "completed":
+                  continue
+              request = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}/actions/runs/{run_id}",
                   headers=headers,
                   method="DELETE",
               )
               try:
-                  with urllib.request.urlopen(req):
-                      pass
-                  print(f"deleted old run {run['id']}")
-              except Exception as exc:
-                  print(f"warning: failed to delete run {run['id']}: {exc}")
+                  with urllib.request.urlopen(request) as response:
+                      response.read()
+                  print(f"Deleted old completed run {run_id}")
+              except urllib.error.HTTPError as error:
+                  if error.code == 404:
+                      print(f"Run {run_id} was already deleted")
+                      continue
+                  raise
           PY

@@ -336,7 +336,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Keep only the latest successful workflow run
+      - name: Keep latest two successful workflow runs
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -365,30 +365,45 @@ jobs:
               with urllib.request.urlopen(request) as response:
                   return json.load(response)
 
-          old_runs = []
+          runs = []
           page = 1
           while True:
               url = (
                   f"https://api.github.com/repos/{repository}/actions/workflows/"
                   f"{workflow}/runs?per_page=100&page={page}"
               )
-              runs = request_json(url).get("workflow_runs", [])
-              old_runs.extend(run for run in runs if int(run["id"]) != current_run_id)
-              if len(runs) < 100:
+              batch = request_json(url).get("workflow_runs", [])
+              runs.extend(batch)
+              if len(batch) < 100:
                   break
               page += 1
 
-          print(f"Keeping current workflow run: {current_run_id}")
-          print(f"Deleting {len(old_runs)} older workflow run(s)")
+          previous_successes = sorted(
+              (
+                  run
+                  for run in runs
+                  if int(run["id"]) != current_run_id
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+              ),
+              key=lambda run: (run.get("created_at", ""), int(run["id"])),
+              reverse=True,
+          )
+          keep_ids = {current_run_id}
+          if previous_successes:
+              keep_ids.add(int(previous_successes[0]["id"]))
 
-          for run in old_runs:
+          print(f"Keeping successful run IDs: {sorted(keep_ids, reverse=True)}")
+          for run in runs:
               run_id = int(run["id"])
+              if run_id in keep_ids or run.get("status") != "completed":
+                  continue
               delete_url = f"https://api.github.com/repos/{repository}/actions/runs/{run_id}"
               request = urllib.request.Request(delete_url, headers=headers, method="DELETE")
               try:
                   with urllib.request.urlopen(request) as response:
                       response.read()
-                  print(f"Deleted run {run_id}")
+                  print(f"Deleted old completed run {run_id}")
               except urllib.error.HTTPError as error:
                   if error.code == 404:
                       print(f"Run {run_id} was already deleted")
