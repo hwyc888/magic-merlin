@@ -176,6 +176,12 @@ install_now() {
     if [ -z "${RSS_LIMIT_CURRENT}" ] || [ "${RSS_LIMIT_CURRENT}" = "262144" ]; then
         dbus set magic_rss_limit_kb="65536"
     fi
+    PERIODIC_RESTART_ENABLE_CURRENT="$(dbus get magic_periodic_restart_enable 2>/dev/null)"
+    [ -n "${PERIODIC_RESTART_ENABLE_CURRENT}" ] || dbus set magic_periodic_restart_enable="0"
+    PERIODIC_RESTART_HOURS_CURRENT="$(dbus get magic_periodic_restart_hours 2>/dev/null)"
+    [ -n "${PERIODIC_RESTART_HOURS_CURRENT}" ] || dbus set magic_periodic_restart_hours="24"
+    PERIODIC_RETRY_MINUTES_CURRENT="$(dbus get magic_periodic_retry_minutes 2>/dev/null)"
+    [ -n "${PERIODIC_RETRY_MINUTES_CURRENT}" ] || dbus set magic_periodic_retry_minutes="5"
 
     dbus set magic_version="${PLVER}"
     dbus set softcenter_module_magic_version="${PLVER}"

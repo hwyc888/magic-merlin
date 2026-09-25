@@ -23,6 +23,15 @@ CRASH_RESTART_STATE="/tmp/magic_crash_restart.state"
 CRASH_RESTART_WINDOW=600
 CRASH_RESTART_MAX=3
 STOP_MARKER="/tmp/magic_intentional_stop"
+PERIODIC_RESTART_STATE="/tmp/magic_periodic_restart.state"
+PERIODIC_RESTART_MAX=3
+PERIODIC_RESTART_ENABLE="${magic_periodic_restart_enable:-0}"
+PERIODIC_RESTART_HOURS="${magic_periodic_restart_hours:-24}"
+PERIODIC_RETRY_MINUTES="${magic_periodic_retry_minutes:-5}"
+case "${PERIODIC_RESTART_HOURS}" in ''|*[!0-9]*|0) PERIODIC_RESTART_HOURS=24 ;; esac
+case "${PERIODIC_RETRY_MINUTES}" in ''|*[!0-9]*|0) PERIODIC_RETRY_MINUTES=5 ;; esac
+[ "${PERIODIC_RESTART_HOURS}" -le 8760 ] 2>/dev/null || PERIODIC_RESTART_HOURS=8760
+[ "${PERIODIC_RETRY_MINUTES}" -le 1440 ] 2>/dev/null || PERIODIC_RETRY_MINUTES=1440
 LOCK_DIR="/tmp/magic_config.lock"
 
 mkdir -p /tmp/upload
@@ -128,6 +137,86 @@ stop_service() {
         fi
     fi
     rm -f "${PIDFILE}"
+}
+
+periodic_schedule_reset() {
+    if [ "${PERIODIC_RESTART_ENABLE}" != "1" ]; then
+        rm -f "${PERIODIC_RESTART_STATE}"
+        return 0
+    fi
+    NOW="$(date +%s 2>/dev/null)"
+    [ -n "${NOW}" ] || NOW=0
+    NEXT_DUE=$((NOW + PERIODIC_RESTART_HOURS * 3600))
+    echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
+    log_user "定时重启已启用：每 ${PERIODIC_RESTART_HOURS} 小时执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
+}
+
+mesh_ready_since_line() {
+    START_LINE="$1"
+    [ -f "${LOGFILE}" ] || return 1
+    [ -n "${START_LINE}" ] || START_LINE=0
+    awk -v start="${START_LINE}" 'NR > start && /组网连接成功/ {found=1} END {exit(found ? 0 : 1)}' "${LOGFILE}" 2>/dev/null
+}
+
+periodic_monitor_tick() {
+    if [ "${PERIODIC_RESTART_ENABLE}" != "1" ]; then
+        rm -f "${PERIODIC_RESTART_STATE}"
+        return 0
+    fi
+
+    NOW="$(date +%s 2>/dev/null)"
+    [ -n "${NOW}" ] || NOW=0
+    MODE=""
+    DUE=0
+    ATTEMPT=0
+    START_LINE=0
+    if [ -f "${PERIODIC_RESTART_STATE}" ]; then
+        read MODE DUE ATTEMPT START_LINE < "${PERIODIC_RESTART_STATE}" 2>/dev/null
+    fi
+    [ -n "${DUE}" ] || DUE=0
+    [ -n "${ATTEMPT}" ] || ATTEMPT=0
+    [ -n "${START_LINE}" ] || START_LINE=0
+
+    case "${MODE}" in
+        scheduled)
+            if [ "${DUE}" -le 0 ] 2>/dev/null; then
+                periodic_schedule_reset
+                return 0
+            fi
+            if [ "${NOW}" -ge "${DUE}" ] 2>/dev/null; then
+                log_user "⟳ 已到定时维护周期，准备重启 MagicTier 核心服务以释放运行资源。"
+                rm -f "${MONITOR_PIDFILE}"
+                ( MAGICTIER_PRESERVE_LOG=1 MAGICTIER_PERIODIC_ATTEMPT=1 sh /koolshare/scripts/magic_config.sh periodic-restart >/dev/null 2>&1 ) &
+                return 1
+            fi
+            ;;
+        waiting)
+            if mesh_ready_since_line "${START_LINE}"; then
+                NEXT_DUE=$((NOW + PERIODIC_RESTART_HOURS * 3600))
+                echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
+                log_user "✓ 定时重启后组网恢复成功；下一次维护将在 ${PERIODIC_RESTART_HOURS} 小时后。"
+                return 0
+            fi
+            if [ "${DUE}" -gt 0 ] 2>/dev/null && [ "${NOW}" -ge "${DUE}" ] 2>/dev/null; then
+                if [ "${ATTEMPT}" -ge "${PERIODIC_RESTART_MAX}" ] 2>/dev/null; then
+                    log_user "✗ 定时维护连续3次未检测到组网连接成功；已关闭定时重启，MagicTier 核心继续运行并自行重连。"
+                    dbus set magic_periodic_restart_enable="0"
+                    PERIODIC_RESTART_ENABLE=0
+                    rm -f "${PERIODIC_RESTART_STATE}"
+                    return 0
+                fi
+                NEXT_ATTEMPT=$((ATTEMPT + 1))
+                log_user "⚠ 定时重启后 ${PERIODIC_RETRY_MINUTES} 分钟内仍未检测到组网成功，准备第 ${NEXT_ATTEMPT} 次重启。"
+                rm -f "${MONITOR_PIDFILE}"
+                ( MAGICTIER_PRESERVE_LOG=1 MAGICTIER_PERIODIC_ATTEMPT="${NEXT_ATTEMPT}" sh /koolshare/scripts/magic_config.sh periodic-restart >/dev/null 2>&1 ) &
+                return 1
+            fi
+            ;;
+        *)
+            periodic_schedule_reset
+            ;;
+    esac
+    return 0
 }
 
 start_monitor() {
@@ -244,6 +333,10 @@ start_monitor() {
                 fi
                 exit 0
             fi
+
+            if ! periodic_monitor_tick; then
+                exit 0
+            fi
         done
     ) >/dev/null 2>&1 &
     echo $! > "${MONITOR_PIDFILE}"
@@ -298,6 +391,9 @@ start_service() {
         return 1
     fi
 
+    if [ "${MAGICTIER_PERIODIC_RESTART:-0}" != "1" ]; then
+        periodic_schedule_reset
+    fi
     trim_logs
     start_monitor
     return 0
@@ -327,6 +423,26 @@ case "${ACTION}" in
         start_service
         exit $?
         ;;
+    periodic-restart)
+        ENABLED="$(dbus get magic_enable 2>/dev/null)"
+        PERIODIC_ENABLED="$(dbus get magic_periodic_restart_enable 2>/dev/null)"
+        [ "${ENABLED}" = "1" ] && [ "${PERIODIC_ENABLED}" = "1" ] || exit 0
+        ATTEMPT="${MAGICTIER_PERIODIC_ATTEMPT:-1}"
+        case "${ATTEMPT}" in ''|*[!0-9]*|0) ATTEMPT=1 ;; esac
+        [ "${ATTEMPT}" -le "${PERIODIC_RESTART_MAX}" ] 2>/dev/null || ATTEMPT="${PERIODIC_RESTART_MAX}"
+        stop_service
+        log_user "⟳ 正在执行定时维护重启（第 ${ATTEMPT} 次尝试），不会重启路由器。"
+        START_LINE="$(wc -l < "${LOGFILE}" 2>/dev/null)"
+        [ -n "${START_LINE}" ] || START_LINE=0
+        NOW="$(date +%s 2>/dev/null)"
+        [ -n "${NOW}" ] || NOW=0
+        RETRY_DUE=$((NOW + PERIODIC_RETRY_MINUTES * 60))
+        echo "waiting ${RETRY_DUE} ${ATTEMPT} ${START_LINE}" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
+        MAGICTIER_PERIODIC_RESTART=1
+        MAGICTIER_PRESERVE_LOG=1
+        start_service
+        exit $?
+        ;;
     start)
         if is_init_invocation; then
             [ "${magic_enable}" = "1" ] || exit 0
@@ -343,6 +459,7 @@ case "${ACTION}" in
             magic_enable="0"
         fi
         stop_service
+        rm -f "${PERIODIC_RESTART_STATE}"
         log_user "MagicTier已停止。"
         exit $?
         ;;
@@ -374,6 +491,7 @@ case "$2" in
             start_service
         else
             stop_service
+            rm -f "${PERIODIC_RESTART_STATE}"
             log_user "MagicTier已停止。"
         fi
         http_response "$1"
@@ -388,6 +506,7 @@ case "$2" in
         dbus set magic_enable="0"
         magic_enable="0"
         stop_service
+        rm -f "${PERIODIC_RESTART_STATE}"
         log_user "MagicTier已停止。"
         http_response "$1"
         ;;

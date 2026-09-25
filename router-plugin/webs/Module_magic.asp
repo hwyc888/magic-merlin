@@ -39,6 +39,9 @@ function init(){
         db_magic=(data.result&&data.result[0])?data.result[0]:{};
         E("magic_enable").checked=db_magic.magic_enable=="1";
         ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){if(db_magic["magic_"+k]!==undefined)E("magic_"+k).value=db_magic["magic_"+k];});
+        E("magic_periodic_restart_enable").checked=db_magic.magic_periodic_restart_enable=="1";
+        E("magic_periodic_restart_hours").value=db_magic.magic_periodic_restart_hours||"24";
+        E("magic_periodic_retry_minutes").value=db_magic.magic_periodic_retry_minutes||"5";
         E("magic_version").innerHTML=db_magic.magic_version||"-";
     }});
     refresh_status();
@@ -46,6 +49,13 @@ function init(){
 }
 function save(){
     db_magic.magic_enable=E("magic_enable").checked?"1":"0";
+    db_magic.magic_periodic_restart_enable=E("magic_periodic_restart_enable").checked?"1":"0";
+    var periodicHours=parseInt(E("magic_periodic_restart_hours").value,10);
+    var retryMinutes=parseInt(E("magic_periodic_retry_minutes").value,10);
+    if(!periodicHours||periodicHours<1||periodicHours>8760){alert("定时重启周期请输入 1～8760 小时。");return;}
+    if(!retryMinutes||retryMinutes<1||retryMinutes>1440){alert("失败重试间隔请输入 1～1440 分钟。");return;}
+    db_magic.magic_periodic_restart_hours=String(periodicHours);
+    db_magic.magic_periodic_retry_minutes=String(retryMinutes);
     ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){db_magic["magic_"+k]=E("magic_"+k).value;});
     showLoading(3);
     api("magic_config.sh",[1],db_magic,function(){setTimeout(function(){location.reload();},2200);});
@@ -238,6 +248,9 @@ function reload_Soft_Center(){
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
 <tr><th>配置管理</th><td><input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" />&nbsp;<input class="button_gen" type="button" onclick="show_config();" value="查看配置" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出文本" /></td></tr>
 <tr><th>启用 MagicTier</th><td><input id="magic_enable" type="checkbox" /></td></tr>
+<tr><th>定时重启服务</th><td><input id="magic_periodic_restart_enable" type="checkbox" /> 启用后按周期重启 MagicTier 核心（会短暂中断当前组网/RDP）</td></tr>
+<tr><th>重启周期</th><td><input id="magic_periodic_restart_hours" class="input_ss_table" type="number" min="1" max="8760" style="width:90px" value="24" /> 小时</td></tr>
+<tr><th>组网失败后重试</th><td><input id="magic_periodic_retry_minutes" class="input_ss_table" type="number" min="1" max="1440" style="width:90px" value="5" /> 分钟；重启后未检测到“组网连接成功”则再次重启，最多3次</td></tr>
 <tr><th>主机名</th><td><input id="magic_hostname" class="input_ss_table" maxlength="128" placeholder="my-node" /></td></tr>
 <tr><th>实例名称</th><td><input id="magic_instance_name" class="input_ss_table" maxlength="128" placeholder="default" /></td></tr>
 <tr><th>网络名称</th><td><input id="magic_network_name" class="input_ss_table" maxlength="128" /></td></tr>
@@ -247,6 +260,6 @@ function reload_Soft_Center(){
 <tr><th>监听地址</th><td><input id="magic_listeners" class="input_ss_table" style="width:420px" maxlength="1024" placeholder="tcp://0.0.0.0:11010,udp://0.0.0.0:11010" /></td></tr>
 <tr><th>发布子网</th><td><input id="magic_proxy_networks" class="input_ss_table" style="width:420px" maxlength="512" placeholder="192.168.50.0/24" /></td></tr></table>
 <div style="margin-top:15px;text-align:center;"><input class="button_gen" type="button" onclick="save();" value="保存并应用" /></div>
-<div style="margin:15px 0 5px 0;" class="formfontdesc">7×24保护：插件启用后自动守护核心进程，异常退出会自动恢复组网；WAN 重拨或地址变化时保持核心运行，由核心自动重连，避免主动重启导致远程桌面断开；RSS 超过 64MB 会连续观察，连续 3 次超限才保护，超过 96MB 则立即保护；10分钟内连续异常超过3次才停用插件自动运行；所有保护均不会重启路由器。</div>
+<div style="margin:15px 0 5px 0;" class="formfontdesc">7×24保护：插件启用后自动守护核心进程，异常退出会自动恢复组网；WAN 重拨或地址变化时保持核心运行，由核心自动重连，避免主动重启导致远程桌面断开；RSS 超过 64MB 会连续观察，连续 3 次超限才保护，超过 96MB 则立即保护；可选定时重启仅重启 MagicTier 核心，重启后必须检测到“组网连接成功”，否则按设置间隔最多重试3次；所有保护均不会重启路由器。</div>
 </td></tr></table></td></tr></table></td></tr></table><div id="footer"></div>
 </body></html>
