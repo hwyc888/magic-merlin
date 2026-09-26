@@ -12,10 +12,7 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use tokio::{
-    sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
-        Mutex,
-    },
+    sync::{mpsc, Mutex},
     task::JoinSet,
 };
 
@@ -52,6 +49,8 @@ use super::{
     PacketRecvChan, PacketRecvChanReceiver, PUBLIC_SERVER_HOSTNAME_PREFIX,
 };
 
+const RPC_TRANSPORT_CHANNEL_CAPACITY: usize = 256;
+
 #[async_trait::async_trait]
 #[auto_impl::auto_impl(&, Box, Arc)]
 pub trait GlobalForeignNetworkAccessor: Send + Sync + 'static {
@@ -68,7 +67,7 @@ struct ForeignNetworkEntry {
     pm_packet_sender: Mutex<Option<PacketRecvChan>>,
 
     peer_rpc: Arc<PeerRpcManager>,
-    rpc_sender: UnboundedSender<ZCPacket>,
+    rpc_sender: mpsc::Sender<ZCPacket>,
 
     packet_recv: Mutex<Option<PacketRecvChanReceiver>>,
 
@@ -191,12 +190,12 @@ impl ForeignNetworkEntry {
     fn build_rpc_tspt(
         my_peer_id: PeerId,
         peer_map: Arc<PeerMap>,
-    ) -> (Arc<PeerRpcManager>, UnboundedSender<ZCPacket>) {
+    ) -> (Arc<PeerRpcManager>, mpsc::Sender<ZCPacket>) {
         struct RpcTransport {
             my_peer_id: PeerId,
             peer_map: Weak<PeerMap>,
 
-            packet_recv: Mutex<UnboundedReceiver<ZCPacket>>,
+            packet_recv: Mutex<mpsc::Receiver<ZCPacket>>,
         }
 
         #[async_trait::async_trait]
@@ -238,7 +237,8 @@ impl ForeignNetworkEntry {
             }
         }
 
-        let (rpc_transport_sender, peer_rpc_tspt_recv) = mpsc::unbounded_channel();
+        let (rpc_transport_sender, peer_rpc_tspt_recv) =
+            mpsc::channel(RPC_TRANSPORT_CHANNEL_CAPACITY);
         let tspt = RpcTransport {
             my_peer_id,
             peer_map: Arc::downgrade(&peer_map),
@@ -344,7 +344,17 @@ impl ForeignNetworkEntry {
                     {
                         rx_bytes.add(buf_len as u64);
                         rx_packets.inc();
-                        rpc_sender.send(zc_packet).unwrap();
+                        match rpc_sender.try_send(zc_packet) {
+                            Ok(()) => {}
+                            Err(mpsc::error::TrySendError::Full(_)) => {
+                                tracing::warn!(
+                                    "dropping foreign-network rpc packet because bounded transport queue is full"
+                                );
+                            }
+                            Err(mpsc::error::TrySendError::Closed(_)) => {
+                                tracing::warn!("foreign-network rpc transport queue is closed");
+                            }
+                        }
                         continue;
                     }
                     tracing::trace!(?hdr, "ignore packet in foreign network");

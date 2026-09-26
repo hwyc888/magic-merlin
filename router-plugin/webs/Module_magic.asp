@@ -88,6 +88,11 @@ function update_periodic_mode_fields(){
     if(E("periodic_daily_row"))E("periodic_daily_row").style.display=interval?"none":"";
     if(E("periodic_weekly_row"))E("periodic_weekly_row").style.display=weekly?"":"none";
 }
+function format_memory(kb){
+    var value=parseInt(kb,10)||0;
+    if(value<1024)return value+" KB";
+    return (value/1024).toFixed(1)+" MB";
+}
 function format_countdown(totalSeconds){
     var total=parseInt(totalSeconds,10)||0;
     if(total<0)total=0;
@@ -139,6 +144,12 @@ function refresh_status(){
             E("run_state").innerHTML=m[1]=="running"?"运行中":"已停止";
             E("run_pid").innerHTML=m[2];
             E("run_rss").innerHTML=(parseInt(m[3],10)/1024).toFixed(1)+" MB";
+        }
+        var h=t.match(/\"mem_available_kb\"\s*:\s*(\d+)[^}]*\"slab_kb\"\s*:\s*(\d+)[^}]*\"socket_mem_kb\"\s*:\s*(\d+)[^}]*\"socket_count\"\s*:\s*(\d+)[^}]*\"peer_count\"\s*:\s*(\d+)[^}]*\"conn_count\"\s*:\s*(\d+)[^}]*\"reconnect_count\"\s*:\s*(\d+)/);
+        if(h){
+            var rssKb=m?parseInt(m[3],10)||0:0;
+            E("memory_health").innerHTML="核心 "+format_memory(rssKb)+"　系统可用 "+format_memory(h[1])+"　Slab "+format_memory(h[2])+"　Socket内存 "+format_memory(h[3]);
+            E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　本次运行自动重连 "+h[7]+" 次";
         }
         var p=t.match(/\"periodic_enabled\"\s*:\s*(\d+)[^}]*\"periodic_mode\"\s*:\s*\"([^\"]+)\"[^}]*\"periodic_due\"\s*:\s*(\d+)[^}]*\"periodic_remaining\"\s*:\s*(\d+)[^}]*\"periodic_attempt\"\s*:\s*(\d+)[^}]*\"periodic_max\"\s*:\s*(\d+)/);
         if(p){
@@ -322,6 +333,8 @@ function reload_Soft_Center(){
 <div class="formfontdesc">MagicTier Magic 独立组网插件（与原 magictier 插件分离）。当前版本：<span id="magic_version">-</span></div>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行状态</td></tr></thead>
 <tr><th>状态</th><td><span id="run_state">检测中</span>　PID: <span id="run_pid">-</span>　RSS: <span id="run_rss">-</span></td></tr>
+<tr><th>内存健康</th><td><span id="memory_health">检测中</span></td></tr>
+<tr><th>组网资源</th><td><span id="network_health">检测中</span></td></tr>
 <tr><th>定时重启</th><td><span id="periodic_status">检测中</span></td></tr>
 <tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看组网日志" /></td></tr></table>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>

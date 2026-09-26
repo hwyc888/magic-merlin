@@ -11,10 +11,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 
 use tokio::{
-    sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender},
-        Mutex, RwLock,
-    },
+    sync::{mpsc, Mutex, RwLock},
     task::JoinSet,
 };
 
@@ -65,14 +62,16 @@ use super::{
     BoxNicPacketFilter, BoxPeerPacketFilter, PacketRecvChan, PacketRecvChanReceiver,
 };
 
+const RPC_TRANSPORT_CHANNEL_CAPACITY: usize = 256;
+
 struct RpcTransport {
     my_peer_id: PeerId,
     peers: Weak<PeerMap>,
     // TODO: this seems can be removed
     foreign_peers: Mutex<Option<Weak<ForeignNetworkClient>>>,
 
-    packet_recv: Mutex<UnboundedReceiver<ZCPacket>>,
-    peer_rpc_tspt_sender: UnboundedSender<ZCPacket>,
+    packet_recv: Mutex<mpsc::Receiver<ZCPacket>>,
+    peer_rpc_tspt_sender: mpsc::Sender<ZCPacket>,
 
     encryptor: Arc<dyn Encryptor>,
 }
@@ -211,7 +210,8 @@ impl PeerManager {
         }
 
         // TODO: remove these because we have impl pipeline processor.
-        let (peer_rpc_tspt_sender, peer_rpc_tspt_recv) = mpsc::unbounded_channel();
+        let (peer_rpc_tspt_sender, peer_rpc_tspt_recv) =
+            mpsc::channel(RPC_TRANSPORT_CHANNEL_CAPACITY);
         let rpc_tspt = Arc::new(RpcTransport {
             my_peer_id,
             peers: Arc::downgrade(&peers),
@@ -448,53 +448,71 @@ impl PeerManager {
         self.check_remote_addr_not_from_virtual_network(&tunnel)?;
 
         let mut conn = PeerConn::new(self.my_peer_id, self.global_ctx.clone(), tunnel);
-        conn.do_handshake_as_server_ext(|peer, msg| {
-            if msg.network_name
-                == self.global_ctx.get_network_identity().network_name
-            {
-                return Ok(());
+        let mut reserved_network_name: Option<String> = None;
+        let handshake_result = conn
+            .do_handshake_as_server_ext(|peer, msg| {
+                if msg.network_name
+                    == self.global_ctx.get_network_identity().network_name
+                {
+                    return Ok(());
+                }
+
+                if self.global_ctx.config.get_flags().private_mode {
+                    return Err(Error::SecretKeyError(
+                        "private mode is turned on, network identity not match".to_string(),
+                    ));
+                }
+
+                let mut peer_id = self
+                    .foreign_network_manager
+                    .get_network_peer_id(&msg.network_name);
+                if peer_id.is_none() {
+                    let network_name = msg.network_name.clone();
+                    peer_id = Some(
+                        *self
+                            .reserved_my_peer_id_map
+                            .entry(network_name.clone())
+                            .or_insert_with(rand::random::<PeerId>)
+                            .value(),
+                    );
+                    reserved_network_name = Some(network_name);
+                }
+                peer.set_peer_id(peer_id.unwrap());
+
+                tracing::info!(
+                    ?peer_id,
+                    ?msg.network_name,
+                    "handshake as server with foreign network, new peer id: {}, peer id in foreign manager: {:?}",
+                    peer.get_my_peer_id(), peer_id
+                );
+
+                Ok(())
+            })
+            .await;
+
+        if let Err(err) = handshake_result {
+            if let Some(network_name) = reserved_network_name.as_ref() {
+                self.reserved_my_peer_id_map.remove(network_name);
+                shrink_dashmap(&self.reserved_my_peer_id_map, None);
             }
-
-            if self.global_ctx.config.get_flags().private_mode {
-                return Err(Error::SecretKeyError(
-                    "private mode is turned on, network identity not match".to_string(),
-                ));
-            }
-
-            let mut peer_id = self
-                .foreign_network_manager
-                .get_network_peer_id(&msg.network_name);
-            if peer_id.is_none() {
-                peer_id = Some(*self.reserved_my_peer_id_map.entry(msg.network_name.clone()).or_insert_with(|| {
-                    rand::random::<PeerId>()
-                }).value());
-            }
-            peer.set_peer_id(peer_id.unwrap());
-
-            tracing::info!(
-                ?peer_id,
-                ?msg.network_name,
-                "handshake as server with foreign network, new peer id: {}, peer id in foreign manager: {:?}",
-                peer.get_my_peer_id(), peer_id
-            );
-
-            Ok(())
-        })
-        .await?;
-
-        let peer_network_name = conn.get_network_identity().network_name.clone();
-
-        conn.set_is_hole_punched(!is_directly_connected);
-
-        if peer_network_name == self.global_ctx.get_network_identity().network_name {
-            self.add_new_peer_conn(conn).await?;
-        } else {
-            self.foreign_network_manager.add_peer_conn(conn).await?;
+            return Err(err);
         }
 
-        self.reserved_my_peer_id_map.remove(&peer_network_name);
-        shrink_dashmap(&self.reserved_my_peer_id_map, None);
+        let peer_network_name = conn.get_network_identity().network_name.clone();
+        conn.set_is_hole_punched(!is_directly_connected);
 
+        let add_result = if peer_network_name == self.global_ctx.get_network_identity().network_name {
+            self.add_new_peer_conn(conn).await
+        } else {
+            self.foreign_network_manager.add_peer_conn(conn).await
+        };
+
+        if let Some(network_name) = reserved_network_name.as_ref() {
+            self.reserved_my_peer_id_map.remove(network_name);
+            shrink_dashmap(&self.reserved_my_peer_id_map, None);
+        }
+
+        add_result?;
         tracing::info!("add tunnel as server done");
         Ok(())
     }
@@ -786,7 +804,7 @@ impl PeerManager {
 
         // for peer rpc packet
         struct PeerRpcPacketProcessor {
-            peer_rpc_tspt_sender: UnboundedSender<ZCPacket>,
+            peer_rpc_tspt_sender: mpsc::Sender<ZCPacket>,
         }
 
         #[async_trait::async_trait]
@@ -797,7 +815,17 @@ impl PeerManager {
                     || hdr.packet_type == PacketType::RpcReq as u8
                     || hdr.packet_type == PacketType::RpcResp as u8
                 {
-                    self.peer_rpc_tspt_sender.send(packet).unwrap();
+                    match self.peer_rpc_tspt_sender.try_send(packet) {
+                        Ok(()) => {}
+                        Err(mpsc::error::TrySendError::Full(_)) => {
+                            tracing::warn!(
+                                "dropping peer rpc packet because bounded transport queue is full"
+                            );
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                            tracing::warn!("peer rpc transport queue is closed");
+                        }
+                    }
                     None
                 } else {
                     Some(packet)
@@ -1269,6 +1297,51 @@ impl PeerManager {
         self.foreign_network_client.run().await;
     }
 
+    async fn run_health_reporter(&self) {
+        let Ok(path) = std::env::var("MAGICTIER_HEALTH_STATUS_FILE") else {
+            return;
+        };
+        if path.trim().is_empty() {
+            return;
+        }
+
+        let peer_map = self.peers.clone();
+        self.tasks.lock().await.spawn(async move {
+            let pid = std::process::id();
+            loop {
+                let peer_ids = peer_map.list_peers_with_conn().await;
+                let mut connection_count = 0usize;
+                for peer_id in &peer_ids {
+                    if let Some(connections) = peer_map.list_peer_conns(*peer_id).await {
+                        connection_count = connection_count.saturating_add(connections.len());
+                    }
+                }
+
+                let reconnect_count = crate::connector::manual::reconnect_attempt_count();
+                let timestamp = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map(|duration| duration.as_secs())
+                    .unwrap_or(0);
+                let body = format!(
+                    "{} {} {} {} {}\n",
+                    pid,
+                    peer_ids.len(),
+                    connection_count,
+                    reconnect_count,
+                    timestamp
+                );
+                let tmp_path = format!("{}.tmp", path);
+                if let Err(err) = std::fs::write(&tmp_path, body)
+                    .and_then(|_| std::fs::rename(&tmp_path, &path))
+                {
+                    tracing::debug!(?err, "failed to write optional health status file");
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        });
+    }
+
     pub async fn run(&self) -> Result<(), Error> {
         match &self.route_algo_inst {
             RouteAlgoInst::Ospf(route) => self.add_route(route.clone()).await,
@@ -1280,6 +1353,7 @@ impl PeerManager {
 
         self.start_peer_recv().await;
         self.run_clean_peer_without_conn_routine().await;
+        self.run_health_reporter().await;
 
         self.run_foriegn_network().await;
 

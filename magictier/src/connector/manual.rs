@@ -1,6 +1,9 @@
 use std::{
     collections::BTreeSet,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Weak,
+    },
 };
 
 use dashmap::DashSet;
@@ -33,6 +36,12 @@ use crate::{
 use super::create_connector_by_url;
 
 type ConnectorMap = Arc<DashSet<url::Url>>;
+
+static MANUAL_RECONNECT_ATTEMPTS: AtomicU32 = AtomicU32::new(0);
+
+pub(crate) fn reconnect_attempt_count() -> u32 {
+    MANUAL_RECONNECT_ATTEMPTS.load(Ordering::Relaxed)
+}
 
 #[derive(Debug, Clone)]
 struct ReconnResult {
@@ -270,6 +279,7 @@ impl ManualConnectorManager {
         data: Arc<ConnectorManagerData>,
         dead_url: url::Url,
     ) -> Result<ReconnResult, Error> {
+        MANUAL_RECONNECT_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
         tracing::info!("reconnect: {}", dead_url);
 
         let mut ip_versions = vec![];
