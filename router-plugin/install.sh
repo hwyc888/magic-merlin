@@ -178,8 +178,12 @@ install_now() {
     fi
     PERIODIC_RESTART_ENABLE_CURRENT="$(dbus get magic_periodic_restart_enable 2>/dev/null)"
     [ -n "${PERIODIC_RESTART_ENABLE_CURRENT}" ] || dbus set magic_periodic_restart_enable="0"
+    PERIODIC_RESTART_MODE_CURRENT="$(dbus get magic_periodic_restart_mode 2>/dev/null)"
+    [ -n "${PERIODIC_RESTART_MODE_CURRENT}" ] || dbus set magic_periodic_restart_mode="interval"
     PERIODIC_RESTART_HOURS_CURRENT="$(dbus get magic_periodic_restart_hours 2>/dev/null)"
     [ -n "${PERIODIC_RESTART_HOURS_CURRENT}" ] || dbus set magic_periodic_restart_hours="24"
+    PERIODIC_RESTART_TIME_CURRENT="$(dbus get magic_periodic_restart_time 2>/dev/null)"
+    [ -n "${PERIODIC_RESTART_TIME_CURRENT}" ] || dbus set magic_periodic_restart_time="04:00"
     PERIODIC_RETRY_MINUTES_CURRENT="$(dbus get magic_periodic_retry_minutes 2>/dev/null)"
     [ -n "${PERIODIC_RETRY_MINUTES_CURRENT}" ] || dbus set magic_periodic_retry_minutes="5"
 

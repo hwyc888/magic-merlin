@@ -42,8 +42,11 @@ function init(){
         E("magic_enable").checked=db_magic.magic_enable=="1";
         ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){if(db_magic["magic_"+k]!==undefined)E("magic_"+k).value=db_magic["magic_"+k];});
         E("magic_periodic_restart_enable").checked=db_magic.magic_periodic_restart_enable=="1";
+        E("magic_periodic_restart_mode").value=db_magic.magic_periodic_restart_mode||"interval";
         E("magic_periodic_restart_hours").value=db_magic.magic_periodic_restart_hours||"24";
+        E("magic_periodic_restart_time").value=db_magic.magic_periodic_restart_time||"04:00";
         E("magic_periodic_retry_minutes").value=db_magic.magic_periodic_retry_minutes||"5";
+        update_periodic_mode_fields();
         E("magic_version").innerHTML=db_magic.magic_version||"-";
     }});
     refresh_status();
@@ -53,11 +56,16 @@ function init(){
 function save(){
     db_magic.magic_enable=E("magic_enable").checked?"1":"0";
     db_magic.magic_periodic_restart_enable=E("magic_periodic_restart_enable").checked?"1":"0";
+    var periodicMode=E("magic_periodic_restart_mode").value=="daily"?"daily":"interval";
     var periodicHours=parseInt(E("magic_periodic_restart_hours").value,10);
+    var periodicTime=E("magic_periodic_restart_time").value;
     var retryMinutes=parseInt(E("magic_periodic_retry_minutes").value,10);
-    if(!periodicHours||periodicHours<1||periodicHours>8760){alert("定时重启周期请输入 1～8760 小时。");return;}
+    if(periodicMode=="interval"&&(!periodicHours||periodicHours<1||periodicHours>8760)){alert("定时重启周期请输入 1～8760 小时。");return;}
+    if(periodicMode=="daily"&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(periodicTime)){alert("请选择有效的每日重启时间。");return;}
     if(!retryMinutes||retryMinutes<1||retryMinutes>1440){alert("失败重试间隔请输入 1～1440 分钟。");return;}
-    db_magic.magic_periodic_restart_hours=String(periodicHours);
+    db_magic.magic_periodic_restart_mode=periodicMode;
+    db_magic.magic_periodic_restart_hours=String(periodicHours||24);
+    db_magic.magic_periodic_restart_time=periodicTime||"04:00";
     db_magic.magic_periodic_retry_minutes=String(retryMinutes);
     ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){db_magic["magic_"+k]=E("magic_"+k).value;});
     showLoading(3);
@@ -66,6 +74,11 @@ function save(){
 function service_action(action){
     var code=action=="start"?2:action=="stop"?3:4;
     api("magic_config.sh",[code],{},function(){setTimeout(refresh_status,1200);show_log();});
+}
+function update_periodic_mode_fields(){
+    var daily=E("magic_periodic_restart_mode")&&E("magic_periodic_restart_mode").value=="daily";
+    if(E("periodic_interval_row"))E("periodic_interval_row").style.display=daily?"none":"";
+    if(E("periodic_daily_row"))E("periodic_daily_row").style.display=daily?"":"none";
 }
 function format_countdown(totalSeconds){
     var total=parseInt(totalSeconds,10)||0;
@@ -87,7 +100,9 @@ function update_periodic_status(){
     var attempt=parseInt(periodicState.attempt,10)||0;
     var max=parseInt(periodicState.max,10)||3;
     if(periodicState.mode=="scheduled"){
-        el.innerHTML="距离下次重启："+format_countdown(remaining)+"　失败时最多重试 "+max+" 次";
+        var scheduleMode=(db_magic.magic_periodic_restart_mode||"interval")=="daily"?"daily":"interval";
+        var scheduleText=scheduleMode=="daily"?"每天 "+(db_magic.magic_periodic_restart_time||"04:00"):"每 "+(db_magic.magic_periodic_restart_hours||"24")+" 小时";
+        el.innerHTML=scheduleText+"　距离下次重启："+format_countdown(remaining)+"　失败时最多重试 "+max+" 次";
     }else if(periodicState.mode=="waiting"){
         if(attempt>=max){
             el.innerHTML="组网尚未恢复；已重启 "+attempt+"/"+max+" 次　最终检测剩余："+format_countdown(remaining);
@@ -294,8 +309,10 @@ function reload_Soft_Center(){
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
 <tr><th>配置管理</th><td><input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" />&nbsp;<input class="button_gen" type="button" onclick="show_config();" value="查看配置" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出文本" /></td></tr>
 <tr><th>启用 MagicTier</th><td><input id="magic_enable" type="checkbox" /></td></tr>
-<tr><th>定时重启服务</th><td><input id="magic_periodic_restart_enable" type="checkbox" /> 启用后按周期重启 MagicTier 核心（会短暂中断当前组网/RDP）</td></tr>
-<tr><th>重启周期</th><td><input id="magic_periodic_restart_hours" class="input_ss_table" type="number" min="1" max="8760" style="width:90px" value="24" /> 小时</td></tr>
+<tr><th>定时重启服务</th><td><input id="magic_periodic_restart_enable" type="checkbox" /> 启用后按计划重启 MagicTier 核心（会短暂中断当前组网/RDP）</td></tr>
+<tr><th>重启方式</th><td><select id="magic_periodic_restart_mode" class="input_option" onchange="update_periodic_mode_fields();"><option value="interval">每隔一段时间</option><option value="daily">每天固定时间</option></select></td></tr>
+<tr id="periodic_interval_row"><th>重启周期</th><td><input id="magic_periodic_restart_hours" class="input_ss_table" type="number" min="1" max="8760" style="width:90px" value="24" /> 小时</td></tr>
+<tr id="periodic_daily_row" style="display:none;"><th>每天重启时间</th><td><input id="magic_periodic_restart_time" class="input_ss_table" type="time" step="60" style="width:120px" value="04:00" /> 按路由器当前本地时间执行</td></tr>
 <tr><th>组网失败后重试</th><td><input id="magic_periodic_retry_minutes" class="input_ss_table" type="number" min="1" max="1440" style="width:90px" value="5" /> 分钟；重启后未检测到“组网连接成功”则再次重启，最多3次</td></tr>
 <tr><th>主机名</th><td><input id="magic_hostname" class="input_ss_table" maxlength="128" placeholder="my-node" /></td></tr>
 <tr><th>实例名称</th><td><input id="magic_instance_name" class="input_ss_table" maxlength="128" placeholder="default" /></td></tr>

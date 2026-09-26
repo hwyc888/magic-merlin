@@ -26,9 +26,13 @@ STOP_MARKER="/tmp/magic_intentional_stop"
 PERIODIC_RESTART_STATE="/tmp/magic_periodic_restart.state"
 PERIODIC_RESTART_MAX=3
 PERIODIC_RESTART_ENABLE="${magic_periodic_restart_enable:-0}"
+PERIODIC_RESTART_MODE="${magic_periodic_restart_mode:-interval}"
 PERIODIC_RESTART_HOURS="${magic_periodic_restart_hours:-24}"
+PERIODIC_RESTART_TIME="${magic_periodic_restart_time:-04:00}"
 PERIODIC_RETRY_MINUTES="${magic_periodic_retry_minutes:-5}"
+case "${PERIODIC_RESTART_MODE}" in interval|daily) ;; *) PERIODIC_RESTART_MODE=interval ;; esac
 case "${PERIODIC_RESTART_HOURS}" in ''|*[!0-9]*|0) PERIODIC_RESTART_HOURS=24 ;; esac
+case "${PERIODIC_RESTART_TIME}" in [0-1][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;; *) PERIODIC_RESTART_TIME="04:00" ;; esac
 case "${PERIODIC_RETRY_MINUTES}" in ''|*[!0-9]*|0) PERIODIC_RETRY_MINUTES=5 ;; esac
 [ "${PERIODIC_RESTART_HOURS}" -le 8760 ] 2>/dev/null || PERIODIC_RESTART_HOURS=8760
 [ "${PERIODIC_RETRY_MINUTES}" -le 1440 ] 2>/dev/null || PERIODIC_RETRY_MINUTES=1440
@@ -139,16 +143,42 @@ stop_service() {
     rm -f "${PIDFILE}"
 }
 
+periodic_next_due() {
+    NOW="$(date +%s 2>/dev/null)"
+    case "${NOW}" in ''|*[!0-9]*) NOW=0 ;; esac
+    if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
+        TARGET_H="${PERIODIC_RESTART_TIME%:*}"
+        TARGET_M="${PERIODIC_RESTART_TIME#*:}"
+        NOW_H="$(date +%H 2>/dev/null)"
+        NOW_M="$(date +%M 2>/dev/null)"
+        NOW_S="$(date +%S 2>/dev/null)"
+        TARGET_H="${TARGET_H#0}"; [ -n "${TARGET_H}" ] || TARGET_H=0
+        TARGET_M="${TARGET_M#0}"; [ -n "${TARGET_M}" ] || TARGET_M=0
+        NOW_H="${NOW_H#0}"; [ -n "${NOW_H}" ] || NOW_H=0
+        NOW_M="${NOW_M#0}"; [ -n "${NOW_M}" ] || NOW_M=0
+        NOW_S="${NOW_S#0}"; [ -n "${NOW_S}" ] || NOW_S=0
+        CURRENT_SECONDS=$((NOW_H * 3600 + NOW_M * 60 + NOW_S))
+        TARGET_SECONDS=$((TARGET_H * 3600 + TARGET_M * 60))
+        DELTA=$((TARGET_SECONDS - CURRENT_SECONDS))
+        [ "${DELTA}" -gt 0 ] 2>/dev/null || DELTA=$((DELTA + 86400))
+        echo $((NOW + DELTA))
+        return 0
+    fi
+    echo $((NOW + PERIODIC_RESTART_HOURS * 3600))
+}
+
 periodic_schedule_reset() {
     if [ "${PERIODIC_RESTART_ENABLE}" != "1" ]; then
         rm -f "${PERIODIC_RESTART_STATE}"
         return 0
     fi
-    NOW="$(date +%s 2>/dev/null)"
-    [ -n "${NOW}" ] || NOW=0
-    NEXT_DUE=$((NOW + PERIODIC_RESTART_HOURS * 3600))
+    NEXT_DUE="$(periodic_next_due)"
     echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
-    log_user "定时重启已启用：每 ${PERIODIC_RESTART_HOURS} 小时执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
+    if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
+        log_user "定时重启已启用：每天 ${PERIODIC_RESTART_TIME} 执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
+    else
+        log_user "定时重启已启用：每 ${PERIODIC_RESTART_HOURS} 小时执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
+    fi
 }
 
 mesh_ready_since_line() {
@@ -192,9 +222,13 @@ periodic_monitor_tick() {
             ;;
         waiting)
             if mesh_ready_since_line "${START_LINE}"; then
-                NEXT_DUE=$((NOW + PERIODIC_RESTART_HOURS * 3600))
+                NEXT_DUE="$(periodic_next_due)"
                 echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
-                log_user "✓ 定时重启后组网恢复成功；下一次维护将在 ${PERIODIC_RESTART_HOURS} 小时后。"
+                if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
+                    log_user "✓ 定时重启后组网恢复成功；下一次维护为每天 ${PERIODIC_RESTART_TIME}。"
+                else
+                    log_user "✓ 定时重启后组网恢复成功；下一次维护将在 ${PERIODIC_RESTART_HOURS} 小时后。"
+                fi
                 return 0
             fi
             if [ "${DUE}" -gt 0 ] 2>/dev/null && [ "${NOW}" -ge "${DUE}" ] 2>/dev/null; then
