@@ -29,10 +29,12 @@ PERIODIC_RESTART_ENABLE="${magic_periodic_restart_enable:-0}"
 PERIODIC_RESTART_MODE="${magic_periodic_restart_mode:-interval}"
 PERIODIC_RESTART_HOURS="${magic_periodic_restart_hours:-24}"
 PERIODIC_RESTART_TIME="${magic_periodic_restart_time:-04:00}"
+PERIODIC_RESTART_WEEKDAY="${magic_periodic_restart_weekday:-0}"
 PERIODIC_RETRY_MINUTES="${magic_periodic_retry_minutes:-5}"
-case "${PERIODIC_RESTART_MODE}" in interval|daily) ;; *) PERIODIC_RESTART_MODE=interval ;; esac
+case "${PERIODIC_RESTART_MODE}" in interval|daily|weekly) ;; *) PERIODIC_RESTART_MODE=interval ;; esac
 case "${PERIODIC_RESTART_HOURS}" in ''|*[!0-9]*|0) PERIODIC_RESTART_HOURS=24 ;; esac
 case "${PERIODIC_RESTART_TIME}" in [0-1][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;; *) PERIODIC_RESTART_TIME="04:00" ;; esac
+case "${PERIODIC_RESTART_WEEKDAY}" in 0|1|2|3|4|5|6) ;; *) PERIODIC_RESTART_WEEKDAY=0 ;; esac
 case "${PERIODIC_RETRY_MINUTES}" in ''|*[!0-9]*|0) PERIODIC_RETRY_MINUTES=5 ;; esac
 [ "${PERIODIC_RESTART_HOURS}" -le 8760 ] 2>/dev/null || PERIODIC_RESTART_HOURS=8760
 [ "${PERIODIC_RETRY_MINUTES}" -le 1440 ] 2>/dev/null || PERIODIC_RETRY_MINUTES=1440
@@ -143,10 +145,23 @@ stop_service() {
     rm -f "${PIDFILE}"
 }
 
+periodic_weekday_name() {
+    case "$1" in
+        0) echo "周日" ;;
+        1) echo "周一" ;;
+        2) echo "周二" ;;
+        3) echo "周三" ;;
+        4) echo "周四" ;;
+        5) echo "周五" ;;
+        6) echo "周六" ;;
+        *) echo "周日" ;;
+    esac
+}
+
 periodic_next_due() {
     NOW="$(date +%s 2>/dev/null)"
     case "${NOW}" in ''|*[!0-9]*) NOW=0 ;; esac
-    if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
+    if [ "${PERIODIC_RESTART_MODE}" = "daily" ] || [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
         TARGET_H="${PERIODIC_RESTART_TIME%:*}"
         TARGET_M="${PERIODIC_RESTART_TIME#*:}"
         NOW_H="$(date +%H 2>/dev/null)"
@@ -159,8 +174,17 @@ periodic_next_due() {
         NOW_S="${NOW_S#0}"; [ -n "${NOW_S}" ] || NOW_S=0
         CURRENT_SECONDS=$((NOW_H * 3600 + NOW_M * 60 + NOW_S))
         TARGET_SECONDS=$((TARGET_H * 3600 + TARGET_M * 60))
-        DELTA=$((TARGET_SECONDS - CURRENT_SECONDS))
-        [ "${DELTA}" -gt 0 ] 2>/dev/null || DELTA=$((DELTA + 86400))
+        if [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
+            NOW_W="$(date +%w 2>/dev/null)"
+            case "${NOW_W}" in 0|1|2|3|4|5|6) ;; *) NOW_W=0 ;; esac
+            DAY_DELTA=$((PERIODIC_RESTART_WEEKDAY - NOW_W))
+            [ "${DAY_DELTA}" -ge 0 ] 2>/dev/null || DAY_DELTA=$((DAY_DELTA + 7))
+            DELTA=$((DAY_DELTA * 86400 + TARGET_SECONDS - CURRENT_SECONDS))
+            [ "${DELTA}" -gt 0 ] 2>/dev/null || DELTA=$((DELTA + 604800))
+        else
+            DELTA=$((TARGET_SECONDS - CURRENT_SECONDS))
+            [ "${DELTA}" -gt 0 ] 2>/dev/null || DELTA=$((DELTA + 86400))
+        fi
         echo $((NOW + DELTA))
         return 0
     fi
@@ -176,6 +200,9 @@ periodic_schedule_reset() {
     echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
     if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
         log_user "定时重启已启用：每天 ${PERIODIC_RESTART_TIME} 执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
+    elif [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
+        WEEKDAY_NAME="$(periodic_weekday_name "${PERIODIC_RESTART_WEEKDAY}")"
+        log_user "定时重启已启用：每${WEEKDAY_NAME} ${PERIODIC_RESTART_TIME} 执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
     else
         log_user "定时重启已启用：每 ${PERIODIC_RESTART_HOURS} 小时执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
     fi
@@ -226,6 +253,9 @@ periodic_monitor_tick() {
                 echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
                 if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
                     log_user "✓ 定时重启后组网恢复成功；下一次维护为每天 ${PERIODIC_RESTART_TIME}。"
+                elif [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
+                    WEEKDAY_NAME="$(periodic_weekday_name "${PERIODIC_RESTART_WEEKDAY}")"
+                    log_user "✓ 定时重启后组网恢复成功；下一次维护为每${WEEKDAY_NAME} ${PERIODIC_RESTART_TIME}。"
                 else
                     log_user "✓ 定时重启后组网恢复成功；下一次维护将在 ${PERIODIC_RESTART_HOURS} 小时后。"
                 fi
