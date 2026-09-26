@@ -196,8 +196,8 @@ jobs:
           grep -q 'DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000' magictier/src/peers/peer.rs
           grep -q 'DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD: u64 = 4 \* 1024' magictier/src/peers/peer.rs
           grep -q 'current_path_active' magictier/src/peers/peer.rs
-          test "$(cat router-plugin/version)" = "1.2.1"
-          grep -q '"version": "1.2.1"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.2.2"
+          grep -q '"version": "1.2.2"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
           grep -q 'window.top.location.replace(target)' router-plugin/webs/Module_magic.asp
           grep -q 'onunload="unloadPage();"' router-plugin/webs/Module_magic.asp
@@ -252,6 +252,10 @@ jobs:
           grep -q 'periodic_monitor_tick' router-plugin/scripts/magic_config.sh
           grep -q '组网连接成功' router-plugin/scripts/magic_config.sh
           grep -q 'periodic-restart)' router-plugin/scripts/magic_config.sh
+          grep -q 'periodic_status_fields' router-plugin/scripts/magic_config.sh
+          grep -q '"periodic_remaining"' router-plugin/scripts/magic_config.sh
+          grep -q 'id="periodic_status"' router-plugin/webs/Module_magic.asp
+          grep -q 'update_periodic_status' router-plugin/webs/Module_magic.asp
           node <<'NODE'
           const fs = require('fs');
           const html = fs.readFileSync('router-plugin/webs/Module_magic.asp', 'utf8');
@@ -296,6 +300,21 @@ jobs:
           if (fields.magic_listeners.value !== '') throw new Error('empty listeners restore failed');
           if (fields.magic_peers.value !== '') throw new Error('empty peers restore failed');
           if (fields.magic_proxy_networks.value !== '') throw new Error('empty proxy networks restore failed');
+          fields.periodic_status = {innerHTML: ''};
+          periodicState.enabled = true;
+          periodicState.mode = 'scheduled';
+          periodicState.remaining = 7205;
+          periodicState.attempt = 0;
+          periodicState.max = 3;
+          periodicState.syncedAt = new Date().getTime();
+          update_periodic_status();
+          if (!fields.periodic_status.innerHTML.includes('距离下次重启：2小时')) throw new Error('periodic countdown display failed');
+          periodicState.mode = 'waiting';
+          periodicState.remaining = 300;
+          periodicState.attempt = 2;
+          periodicState.syncedAt = new Date().getTime();
+          update_periodic_status();
+          if (!fields.periodic_status.innerHTML.includes('已重启 2/3 次')) throw new Error('periodic retry counter display failed');
           NODE
 
       - name: Create router packages

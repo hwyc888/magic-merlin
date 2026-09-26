@@ -399,6 +399,34 @@ start_service() {
     return 0
 }
 
+periodic_status_fields() {
+    if [ "${magic_enable:-0}" != "1" ] || [ "${PERIODIC_RESTART_ENABLE}" != "1" ]; then
+        echo '"periodic_enabled":0,"periodic_mode":"disabled","periodic_due":0,"periodic_remaining":0,"periodic_attempt":0,"periodic_max":3'
+        return 0
+    fi
+
+    MODE="initializing"
+    DUE=0
+    ATTEMPT=0
+    START_LINE=0
+    if [ -f "${PERIODIC_RESTART_STATE}" ]; then
+        read MODE DUE ATTEMPT START_LINE < "${PERIODIC_RESTART_STATE}" 2>/dev/null
+    fi
+    case "${MODE}" in scheduled|waiting) ;; *) MODE="initializing" ;; esac
+    case "${DUE}" in ''|*[!0-9]*) DUE=0 ;; esac
+    case "${ATTEMPT}" in ''|*[!0-9]*) ATTEMPT=0 ;; esac
+    [ "${ATTEMPT}" -le "${PERIODIC_RESTART_MAX}" ] 2>/dev/null || ATTEMPT="${PERIODIC_RESTART_MAX}"
+
+    NOW="$(date +%s 2>/dev/null)"
+    case "${NOW}" in ''|*[!0-9]*) NOW=0 ;; esac
+    REMAINING=0
+    if [ "${DUE}" -gt "${NOW}" ] 2>/dev/null; then
+        REMAINING=$((DUE - NOW))
+    fi
+    printf '"periodic_enabled":1,"periodic_mode":"%s","periodic_due":%s,"periodic_remaining":%s,"periodic_attempt":%s,"periodic_max":%s' \
+        "${MODE}" "${DUE}" "${REMAINING}" "${ATTEMPT}" "${PERIODIC_RESTART_MAX}"
+}
+
 print_status() {
     if is_running; then
         PID="$(cat "${PIDFILE}")"
@@ -523,13 +551,14 @@ case "$2" in
         http_response "$1"
         ;;
     6)
+        PERIODIC_FIELDS="$(periodic_status_fields)"
         if is_running; then
             PID="$(cat "${PIDFILE}")"
             RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"
             [ -n "${RSS}" ] || RSS=0
-            http_response "{\"state\":\"running\",\"pid\":${PID},\"rss_kb\":${RSS}}"
+            http_response "{\"state\":\"running\",\"pid\":${PID},\"rss_kb\":${RSS},${PERIODIC_FIELDS}}"
         else
-            http_response '{"state":"stopped","pid":0,"rss_kb":0}'
+            http_response "{\"state\":\"stopped\",\"pid\":0,\"rss_kb\":0,${PERIODIC_FIELDS}}"
         fi
         ;;
     *)

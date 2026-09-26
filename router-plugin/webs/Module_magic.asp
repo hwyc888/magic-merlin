@@ -28,6 +28,8 @@
 <script type="text/javascript">
 var db_magic = {};
 var statusTimer = null;
+var periodicTimer = null;
+var periodicState = {enabled:false,mode:"disabled",remaining:0,attempt:0,max:3,syncedAt:0};
 function E(id){return document.getElementById(id);}
 function menu_hook(){tabtitle[tabtitle.length-1]=new Array("","MagicTier Magic");tablink[tablink.length-1]=new Array("","Module_magic.asp");}
 function api(method, params, fields, done){
@@ -46,6 +48,7 @@ function init(){
     }});
     refresh_status();
     statusTimer=setInterval(refresh_status,5000);
+    periodicTimer=setInterval(update_periodic_status,1000);
 }
 function save(){
     db_magic.magic_enable=E("magic_enable").checked?"1":"0";
@@ -64,6 +67,37 @@ function service_action(action){
     var code=action=="start"?2:action=="stop"?3:4;
     api("magic_config.sh",[code],{},function(){setTimeout(refresh_status,1200);show_log();});
 }
+function format_countdown(totalSeconds){
+    var total=parseInt(totalSeconds,10)||0;
+    if(total<0)total=0;
+    var hours=Math.floor(total/3600);
+    var minutes=Math.floor((total%3600)/60);
+    var seconds=total%60;
+    return hours+"小时 "+minutes+"分 "+seconds+"秒";
+}
+function update_periodic_status(){
+    var el=E("periodic_status");
+    if(!el)return;
+    if(!periodicState.enabled){
+        el.innerHTML="已关闭";
+        return;
+    }
+    var elapsed=periodicState.syncedAt?Math.floor((new Date().getTime()-periodicState.syncedAt)/1000):0;
+    var remaining=Math.max(0,periodicState.remaining-elapsed);
+    var attempt=parseInt(periodicState.attempt,10)||0;
+    var max=parseInt(periodicState.max,10)||3;
+    if(periodicState.mode=="scheduled"){
+        el.innerHTML="距离下次重启："+format_countdown(remaining)+"　失败时最多重试 "+max+" 次";
+    }else if(periodicState.mode=="waiting"){
+        if(attempt>=max){
+            el.innerHTML="组网尚未恢复；已重启 "+attempt+"/"+max+" 次　最终检测剩余："+format_countdown(remaining);
+        }else{
+            el.innerHTML="组网尚未恢复；已重启 "+attempt+"/"+max+" 次　距第 "+(attempt+1)+" 次重启："+format_countdown(remaining);
+        }
+    }else{
+        el.innerHTML="已启用，正在初始化重启倒计时";
+    }
+}
 function refresh_status(){
     api("magic_config.sh",[6],{},function(xhr){
         var t=xhr.responseText||"";
@@ -72,6 +106,16 @@ function refresh_status(){
             E("run_state").innerHTML=m[1]=="running"?"运行中":"已停止";
             E("run_pid").innerHTML=m[2];
             E("run_rss").innerHTML=(parseInt(m[3],10)/1024).toFixed(1)+" MB";
+        }
+        var p=t.match(/\"periodic_enabled\"\s*:\s*(\d+)[^}]*\"periodic_mode\"\s*:\s*\"([^\"]+)\"[^}]*\"periodic_due\"\s*:\s*(\d+)[^}]*\"periodic_remaining\"\s*:\s*(\d+)[^}]*\"periodic_attempt\"\s*:\s*(\d+)[^}]*\"periodic_max\"\s*:\s*(\d+)/);
+        if(p){
+            periodicState.enabled=p[1]=="1";
+            periodicState.mode=p[2];
+            periodicState.remaining=parseInt(p[4],10)||0;
+            periodicState.attempt=parseInt(p[5],10)||0;
+            periodicState.max=parseInt(p[6],10)||3;
+            periodicState.syncedAt=new Date().getTime();
+            update_periodic_status();
         }
     });
 }
@@ -216,6 +260,7 @@ function import_config_text(text){
 function import_from_textarea(){if(import_config_text(E("magic_import_text").value))hide_import();}
 function unloadPage(){
     if(statusTimer){clearInterval(statusTimer);statusTimer=null;}
+    if(periodicTimer){clearInterval(periodicTimer);periodicTimer=null;}
 }
 function reload_Soft_Center(){
     unloadPage();
@@ -244,6 +289,7 @@ function reload_Soft_Center(){
 <div class="formfontdesc">MagicTier Magic 独立组网插件（与原 magictier 插件分离）。当前版本：<span id="magic_version">-</span></div>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行状态</td></tr></thead>
 <tr><th>状态</th><td><span id="run_state">检测中</span>　PID: <span id="run_pid">-</span>　RSS: <span id="run_rss">-</span></td></tr>
+<tr><th>定时重启</th><td><span id="periodic_status">检测中</span></td></tr>
 <tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看组网日志" /></td></tr></table>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
 <tr><th>配置管理</th><td><input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" />&nbsp;<input class="button_gen" type="button" onclick="show_config();" value="查看配置" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出文本" /></td></tr>
