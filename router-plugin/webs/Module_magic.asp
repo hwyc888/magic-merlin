@@ -136,6 +136,15 @@ function update_periodic_status(){
         el.innerHTML="已启用，正在初始化重启倒计时";
     }
 }
+function format_epoch_time(epochSeconds){
+    var value=parseInt(epochSeconds,10)||0;
+    if(!value)return "无";
+    var d=new Date(value*1000);
+    var hh=("0"+d.getHours()).slice(-2);
+    var mm=("0"+d.getMinutes()).slice(-2);
+    var ss=("0"+d.getSeconds()).slice(-2);
+    return hh+":"+mm+":"+ss;
+}
 function refresh_status(){
     api("magic_config.sh",[6],{},function(xhr){
         var t=xhr.responseText||"";
@@ -149,7 +158,18 @@ function refresh_status(){
         if(h){
             var rssKb=m?parseInt(m[3],10)||0:0;
             E("memory_health").innerHTML="核心 "+format_memory(rssKb)+"　系统可用 "+format_memory(h[1])+"　Slab "+format_memory(h[2])+"　Socket内存 "+format_memory(h[3]);
-            E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　本次运行自动重连 "+h[7]+" 次";
+            var r=t.match(/\"reconnect_recent_10m\"\s*:\s*(\d+)[^}]*\"reconnect_consecutive_failures\"\s*:\s*(\d+)[^}]*\"reconnect_in_flight\"\s*:\s*(\d+)[^}]*\"reconnect_last_result\"\s*:\s*(\d+)[^}]*\"reconnect_last_ts\"\s*:\s*(\d+)/);
+            if(r){
+                var recent=parseInt(r[1],10)||0;
+                var consecutive=parseInt(r[2],10)||0;
+                var inFlight=parseInt(r[3],10)||0;
+                var lastResult=parseInt(r[4],10)||0;
+                var lastResultText=lastResult==1?"成功":(lastResult==2?"失败":"无");
+                var stability=inFlight>0?"正在重连":(consecutive>0?"最近重连失败":(recent>=4?"近期重连较多":"稳定"));
+                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　状态 "+stability+"　累计重连 "+h[7]+" 次　近10分钟 "+recent+" 次　连续失败 "+consecutive+" 次　最近结果 "+lastResultText+" "+format_epoch_time(r[5]);
+            }else{
+                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　累计重连 "+h[7]+" 次";
+            }
         }
         var p=t.match(/\"periodic_enabled\"\s*:\s*(\d+)[^}]*\"periodic_mode\"\s*:\s*\"([^\"]+)\"[^}]*\"periodic_due\"\s*:\s*(\d+)[^}]*\"periodic_remaining\"\s*:\s*(\d+)[^}]*\"periodic_attempt\"\s*:\s*(\d+)[^}]*\"periodic_max\"\s*:\s*(\d+)/);
         if(p){
