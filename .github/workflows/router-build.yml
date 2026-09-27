@@ -225,6 +225,8 @@ jobs:
           grep -q 'sunreclaim_kb' router-plugin/scripts/magic_health.sh
           grep -q 'conntrack_count' router-plugin/scripts/magic_health.sh
           grep -q 'kmalloc_65536_kb' router-plugin/scripts/magic_health.sh
+          sh -n router-plugin/scripts/magic_config.sh
+          sh -n router-plugin/scripts/magic_health.sh
           test "$(cat router-plugin/version)" = "1.2.8"
           grep -q '"version": "1.2.8"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
