@@ -10,7 +10,7 @@ use dashmap::DashSet;
 use tokio::{sync::mpsc, task::JoinSet, time::timeout};
 
 use crate::{
-    common::{dns::socket_addrs, join_joinset_background, PeerId},
+    common::{dns::socket_addrs, join_joinset_background, low_memory_mode, PeerId},
     peers::peer_conn::PeerConnId,
     proto::{
         api::instance::{
@@ -220,7 +220,7 @@ impl ManualConnectorManager {
         for item in self.data.connectors.iter() {
             let conn_url = item.key().clone();
             let mut status = ConnectorStatus::Connected;
-            if dead_urls.contains(&conn_url) {
+            if dead_urls.contains(&conn_url) || self.data.reconnect_backoff.contains_key(&conn_url) {
                 status = ConnectorStatus::Disconnected;
             }
             ret.insert(
@@ -331,10 +331,11 @@ impl ManualConnectorManager {
                 continue;
             }
 
-            if data
-                .reconnect_backoff
-                .get(&url)
-                .is_some_and(|state| now < state.retry_after)
+            if low_memory_mode()
+                && data
+                    .reconnect_backoff
+                    .get(&url)
+                    .is_some_and(|state| now < state.retry_after)
             {
                 continue;
             }
@@ -359,7 +360,7 @@ impl ManualConnectorManager {
         url: &url::Url,
         success: bool,
     ) {
-        if success {
+        if success || !low_memory_mode() {
             data.reconnect_backoff.remove(url);
             return;
         }
