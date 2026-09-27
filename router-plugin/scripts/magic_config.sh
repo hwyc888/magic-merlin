@@ -575,6 +575,11 @@ health_status_fields() {
     PEER_COUNT=0
     CONN_COUNT=0
     RECONNECT_COUNT=0
+    RECONNECT_RECENT=0
+    RECONNECT_CONSEC_FAIL=0
+    RECONNECT_IN_FLIGHT=0
+    RECONNECT_LAST_RESULT=0
+    RECONNECT_LAST_TS=0
     if is_running; then
         HEALTH_PID="$(cat "${PIDFILE}" 2>/dev/null)"
         for FD in /proc/"${HEALTH_PID}"/fd/*; do
@@ -586,22 +591,27 @@ health_status_fields() {
         if [ -r "${CORE_HEALTH_STATE}" ]; then
             CORE_HEALTH_PID=0
             CORE_HEALTH_TS=0
-            read CORE_HEALTH_PID PEER_COUNT CONN_COUNT RECONNECT_COUNT CORE_HEALTH_TS < "${CORE_HEALTH_STATE}" 2>/dev/null
+            read CORE_HEALTH_PID PEER_COUNT CONN_COUNT RECONNECT_COUNT RECONNECT_RECENT RECONNECT_CONSEC_FAIL RECONNECT_IN_FLIGHT RECONNECT_LAST_RESULT RECONNECT_LAST_TS CORE_HEALTH_TS < "${CORE_HEALTH_STATE}" 2>/dev/null
             if [ "${CORE_HEALTH_PID}" != "${HEALTH_PID}" ]; then
                 PEER_COUNT=0
                 CONN_COUNT=0
                 RECONNECT_COUNT=0
+                RECONNECT_RECENT=0
+                RECONNECT_CONSEC_FAIL=0
+                RECONNECT_IN_FLIGHT=0
+                RECONNECT_LAST_RESULT=0
+                RECONNECT_LAST_TS=0
             fi
         fi
     fi
 
-    for VALUE_NAME in MEM_AVAILABLE_KB SLAB_KB SOCKET_MEM_KB SOCKET_COUNT PEER_COUNT CONN_COUNT RECONNECT_COUNT; do
+    for VALUE_NAME in MEM_AVAILABLE_KB SLAB_KB SOCKET_MEM_KB SOCKET_COUNT PEER_COUNT CONN_COUNT RECONNECT_COUNT RECONNECT_RECENT RECONNECT_CONSEC_FAIL RECONNECT_IN_FLIGHT RECONNECT_LAST_RESULT RECONNECT_LAST_TS; do
         eval 'VALUE=$'"${VALUE_NAME}"
         case "${VALUE}" in ''|*[!0-9]*) eval "${VALUE_NAME}=0" ;; esac
     done
 
-    printf '"mem_available_kb":%s,"slab_kb":%s,"socket_mem_kb":%s,"socket_count":%s,"peer_count":%s,"conn_count":%s,"reconnect_count":%s' \
-        "${MEM_AVAILABLE_KB}" "${SLAB_KB}" "${SOCKET_MEM_KB}" "${SOCKET_COUNT}" "${PEER_COUNT}" "${CONN_COUNT}" "${RECONNECT_COUNT}"
+    printf '"mem_available_kb":%s,"slab_kb":%s,"socket_mem_kb":%s,"socket_count":%s,"peer_count":%s,"conn_count":%s,"reconnect_count":%s,"reconnect_recent_10m":%s,"reconnect_consecutive_failures":%s,"reconnect_in_flight":%s,"reconnect_last_result":%s,"reconnect_last_ts":%s' \
+        "${MEM_AVAILABLE_KB}" "${SLAB_KB}" "${SOCKET_MEM_KB}" "${SOCKET_COUNT}" "${PEER_COUNT}" "${CONN_COUNT}" "${RECONNECT_COUNT}" "${RECONNECT_RECENT}" "${RECONNECT_CONSEC_FAIL}" "${RECONNECT_IN_FLIGHT}" "${RECONNECT_LAST_RESULT}" "${RECONNECT_LAST_TS}"
 }
 
 print_status() {
