@@ -21,7 +21,7 @@ use crate::{
         config::{ConfigLoader, TomlConfigLoader},
         error::Error,
         global_ctx::{ArcGlobalCtx, GlobalCtx, GlobalCtxEvent, NetworkIdentity},
-        join_joinset_background, shrink_dashmap,
+        join_joinset_background, low_memory_mode, shrink_dashmap,
         stats_manager::{LabelSet, LabelType, MetricName, StatsManager},
         token_bucket::TokenBucket,
         PeerId,
@@ -238,7 +238,7 @@ impl ForeignNetworkEntry {
         }
 
         let (rpc_transport_sender, peer_rpc_tspt_recv) =
-            mpsc::channel(RPC_TRANSPORT_CHANNEL_CAPACITY);
+            mpsc::channel(if low_memory_mode() { 64 } else { RPC_TRANSPORT_CHANNEL_CAPACITY });
         let tspt = RpcTransport {
             my_peer_id,
             peer_map: Arc::downgrade(&peer_map),

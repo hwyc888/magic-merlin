@@ -13,8 +13,8 @@ use std::{
 
 use crate::{
     common::{
-        dns::socket_addrs, error::Error, global_ctx::ArcGlobalCtx, stun::StunInfoCollectorTrait,
-        PeerId,
+        dns::socket_addrs, error::Error, global_ctx::ArcGlobalCtx, low_memory_mode,
+        stun::StunInfoCollectorTrait, PeerId,
     },
     connector::udp_hole_punch::handle_rpc_result,
     peers::{
@@ -44,6 +44,7 @@ use super::{create_connector_by_url, udp_hole_punch};
 
 pub const DIRECT_CONNECTOR_SERVICE_ID: u32 = 1;
 pub const DIRECT_CONNECTOR_BLACKLIST_TIMEOUT_SEC: u64 = 300;
+const LOW_MEMORY_DIRECT_CONNECT_CONCURRENCY: usize = 2;
 
 static TESTING: AtomicBool = AtomicBool::new(false);
 
@@ -285,6 +286,9 @@ impl DirectConnectorManagerData {
         listener: &url::Url,
         tasks: &mut JoinSet<Result<(), Error>>,
     ) {
+        if low_memory_mode() && tasks.len() >= LOW_MEMORY_DIRECT_CONNECT_CONCURRENCY {
+            return;
+        }
         let Ok(mut addrs) = socket_addrs(listener, || None).await else {
             tracing::error!(?listener, "failed to parse socket address from listener");
             return;
@@ -299,6 +303,11 @@ impl DirectConnectorManagerData {
                         .iter()
                         .chain(ip_list.public_ipv4.iter())
                         .for_each(|ip| {
+                            if low_memory_mode()
+                                && tasks.len() >= LOW_MEMORY_DIRECT_CONNECT_CONCURRENCY
+                            {
+                                return;
+                            }
                             let mut addr = (*listener).clone();
                             if addr.set_host(Some(ip.to_string().as_str())).is_ok() {
                                 tasks.spawn(Self::try_connect_to_ip(
@@ -342,6 +351,11 @@ impl DirectConnectorManagerData {
                         .collect::<HashSet<_>>()
                         .iter()
                         .for_each(|ip| {
+                            if low_memory_mode()
+                                && tasks.len() >= LOW_MEMORY_DIRECT_CONNECT_CONCURRENCY
+                            {
+                                return;
+                            }
                             let mut addr = (*listener).clone();
                             if addr.set_host(Some(format!("[{}]", ip).as_str())).is_ok() {
                                 tasks.spawn(Self::try_connect_to_ip(

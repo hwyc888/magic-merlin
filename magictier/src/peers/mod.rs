@@ -54,7 +54,8 @@ type BoxNicPacketFilter = Box<dyn NicPacketFilter + Send + Sync>;
 pub type PacketRecvChan = tokio::sync::mpsc::Sender<ZCPacket>;
 pub type PacketRecvChanReceiver = tokio::sync::mpsc::Receiver<ZCPacket>;
 pub fn create_packet_recv_chan() -> (PacketRecvChan, PacketRecvChanReceiver) {
-    tokio::sync::mpsc::channel(128)
+    let capacity = if crate::common::low_memory_mode() { 64 } else { 128 };
+    tokio::sync::mpsc::channel(capacity)
 }
 pub async fn recv_packet_from_chan(
     packet_recv_chan_receiver: &mut PacketRecvChanReceiver,

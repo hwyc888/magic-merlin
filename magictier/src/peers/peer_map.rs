@@ -11,7 +11,7 @@ use crate::{
     common::{
         error::Error,
         global_ctx::{ArcGlobalCtx, GlobalCtxEvent, NetworkIdentity},
-        shrink_dashmap, PeerId,
+        low_memory_mode, shrink_dashmap, PeerId,
     },
     proto::{
         api::instance::{self, PeerConnInfo},
@@ -97,6 +97,9 @@ impl PeerMap {
                     guard.insert_many(alive_client_url, conn_ids);
                 }
             };
+            if low_memory_mode() && guard.is_empty() {
+                *guard = multimap::MultiMap::new();
+            }
             let alive_conn_count = guard.len();
             drop(guard);
             tracing::debug!(
@@ -312,7 +315,10 @@ impl PeerMap {
 
     pub async fn close_peer(&self, peer_id: PeerId) -> Result<(), TunnelError> {
         let remove_ret = self.peer_map.remove(&peer_id);
-        shrink_dashmap(&self.peer_map, None);
+        shrink_dashmap(
+            &self.peer_map,
+            if low_memory_mode() { Some(0) } else { None },
+        );
 
         self.global_ctx
             .issue_event(GlobalCtxEvent::PeerRemoved(peer_id));

@@ -2,7 +2,7 @@ use std::{
     fmt::Debug,
     future,
     io::Write as _,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 use time::util::refresh_tz;
 use tokio::{task::JoinSet, time::timeout};
@@ -45,6 +45,17 @@ pub fn get_logger_timer_rfc3339(
 }
 
 pub type PeerId = u32;
+
+pub fn low_memory_mode() -> bool {
+    static LOW_MEMORY_MODE: OnceLock<bool> = OnceLock::new();
+    *LOW_MEMORY_MODE.get_or_init(|| {
+        let value = std::env::var("MAGICTIER_LOW_MEMORY").unwrap_or_default();
+        value == "1"
+            || value.eq_ignore_ascii_case("true")
+            || value.eq_ignore_ascii_case("yes")
+            || value.eq_ignore_ascii_case("on")
+    })
+}
 
 pub fn new_peer_id() -> PeerId {
     rand::random()

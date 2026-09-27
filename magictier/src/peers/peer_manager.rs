@@ -9,6 +9,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 
 use dashmap::DashMap;
+use sha2::{Digest, Sha256};
 
 use tokio::{
     sync::{mpsc, Mutex, RwLock},
@@ -20,8 +21,9 @@ use crate::{
         compressor::{Compressor as _, DefaultCompressor},
         constants::MAGICTIER_VERSION,
         error::Error,
+        get_machine_id,
         global_ctx::{ArcGlobalCtx, NetworkIdentity},
-        shrink_dashmap,
+        low_memory_mode, shrink_dashmap,
         stats_manager::{CounterHandle, LabelSet, LabelType, MetricName},
         stun::StunInfoCollectorTrait,
         PeerId,
@@ -63,6 +65,47 @@ use super::{
 };
 
 const RPC_TRANSPORT_CHANNEL_CAPACITY: usize = 256;
+const LOW_MEMORY_RPC_TRANSPORT_CHANNEL_CAPACITY: usize = 64;
+
+fn rpc_transport_channel_capacity() -> usize {
+    if low_memory_mode() {
+        LOW_MEMORY_RPC_TRANSPORT_CHANNEL_CAPACITY
+    } else {
+        RPC_TRANSPORT_CHANNEL_CAPACITY
+    }
+}
+
+fn stable_peer_id_from_parts(machine_id: uuid::Uuid, network_name: &str, instance_name: &str) -> PeerId {
+    let mut hasher = Sha256::new();
+    hasher.update(machine_id.as_bytes());
+    hasher.update([0u8]);
+    hasher.update(network_name.as_bytes());
+    hasher.update([0u8]);
+    hasher.update(instance_name.as_bytes());
+    let digest = hasher.finalize();
+    let peer_id = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
+    if peer_id == 0 { 1 } else { peer_id }
+}
+
+fn stable_peer_id(global_ctx: &ArcGlobalCtx) -> PeerId {
+    stable_peer_id_from_parts(get_machine_id(), &global_ctx.get_network_name(), &global_ctx.inst_name)
+}
+
+#[cfg(test)]
+mod stable_peer_id_tests {
+    use super::stable_peer_id_from_parts;
+
+    #[test]
+    fn peer_id_is_stable_and_network_scoped() {
+        let machine_id = uuid::Uuid::from_u128(0x1234567890abcdef1234567890abcdef);
+        let first = stable_peer_id_from_parts(machine_id, "network-a", "default");
+        let second = stable_peer_id_from_parts(machine_id, "network-a", "default");
+        let other_network = stable_peer_id_from_parts(machine_id, "network-b", "default");
+        assert_eq!(first, second);
+        assert_ne!(first, 0);
+        assert_ne!(first, other_network);
+    }
+}
 
 struct RpcTransport {
     my_peer_id: PeerId,
@@ -177,7 +220,7 @@ impl PeerManager {
         global_ctx: ArcGlobalCtx,
         nic_channel: PacketRecvChan,
     ) -> Self {
-        let my_peer_id = rand::random();
+        let my_peer_id = stable_peer_id(&global_ctx);
 
         let (packet_send, packet_recv) = create_packet_recv_chan();
         let peers = Arc::new(PeerMap::new(
@@ -211,7 +254,7 @@ impl PeerManager {
 
         // TODO: remove these because we have impl pipeline processor.
         let (peer_rpc_tspt_sender, peer_rpc_tspt_recv) =
-            mpsc::channel(RPC_TRANSPORT_CHANNEL_CAPACITY);
+            mpsc::channel(rpc_transport_channel_capacity());
         let rpc_tspt = Arc::new(RpcTransport {
             my_peer_id,
             peers: Arc::downgrade(&peers),
@@ -1337,7 +1380,10 @@ impl PeerManager {
                     tracing::debug!(?err, "failed to write optional health status file");
                 }
 
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(
+                    if low_memory_mode() { 15 } else { 5 },
+                ))
+                .await;
             }
         });
     }

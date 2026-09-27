@@ -72,6 +72,15 @@ is_running() {
     pid_is_core "${PID}" && kill -0 "${PID}" 2>/dev/null
 }
 
+router_machine_id() {
+    ID="$(nvram get lan_hwaddr 2>/dev/null)"
+    [ -n "${ID}" ] || ID="$(nvram get et0macaddr 2>/dev/null)"
+    [ -n "${ID}" ] || ID="$(nvram get wl0_hwaddr 2>/dev/null)"
+    [ -n "${ID}" ] || ID="$(uname -n 2>/dev/null)"
+    [ -n "${ID}" ] || ID="unknown-router"
+    printf 'magic-router-%s\n' "${ID}"
+}
+
 get_wan_ipv4() {
     for KEY in wan0_ipaddr wan_ipaddr wan1_ipaddr; do
         WAN_IP="$(nvram get "${KEY}" 2>/dev/null)"
@@ -434,7 +443,8 @@ start_service() {
     fi
     log_user "正在建立组网连接..."
 
-    set -- "${BIN}" --console-log-level warn --file-log-level off --dev-name magic0
+    MACHINE_ID="$(router_machine_id)"
+    set -- "${BIN}" --machine-id "${MACHINE_ID}" --console-log-level warn --file-log-level off --dev-name magic0
     [ -z "${magic_hostname}" ] || set -- "$@" --hostname "${magic_hostname}"
     [ -z "${magic_instance_name}" ] || set -- "$@" --instance-name "${magic_instance_name}"
     [ -z "${magic_network_name}" ] || set -- "$@" --network-name "${magic_network_name}"
@@ -445,7 +455,7 @@ start_service() {
     [ -z "${magic_proxy_networks}" ] || set -- "$@" --proxy-networks "${magic_proxy_networks}"
 
     rm -f "${CORE_HEALTH_STATE}"
-    MAGICTIER_HEALTH_STATUS_FILE="${CORE_HEALTH_STATE}" MAGICTIER_USER_EVENT_LOG="${LOGFILE}" "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
+    MAGICTIER_LOW_MEMORY=1 MAGICTIER_HEALTH_STATUS_FILE="${CORE_HEALTH_STATE}" MAGICTIER_USER_EVENT_LOG="${LOGFILE}" "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
     echo $! > "${PIDFILE}"
     sleep 2
 

@@ -1176,6 +1176,8 @@ fn win_service_main(arg: Vec<std::ffi::OsString>) {
 
 async fn run_main(cli: Cli) -> anyhow::Result<()> {
     defer!(dump_profile(0););
+
+    crate::common::set_default_machine_id(cli.machine_id.clone());
     
     // 设置 verbose 输出标志
     if cli.verbose {

@@ -33,7 +33,7 @@ use tokio::{
 use crate::{
     common::{
         config::NetworkIdentity, constants::MAGICTIER_VERSION, global_ctx::ArcGlobalCtx,
-        shrink_dashmap, stun::StunInfoCollectorTrait, PeerId,
+        low_memory_mode, shrink_dashmap, stun::StunInfoCollectorTrait, PeerId,
     },
     peers::route_trait::{Route, RouteInterfaceBox},
     proto::{
@@ -77,6 +77,18 @@ static FORCE_USE_CONN_LIST: AtomicBool = AtomicBool::new(false);
 // 2. all the dst_saved_peer_info_version in all sessions already remove the peer info, the peer info will be propagated
 //    in another zone when two zone restore the conneciton.
 static REMOVE_UNREACHABLE_PEER_INFO_AFTER: Duration = Duration::from_secs(90);
+
+fn remove_dead_peer_info_after() -> Duration {
+    if low_memory_mode() { Duration::from_secs(600) } else { REMOVE_DEAD_PEER_INFO_AFTER }
+}
+
+fn remove_unreachable_peer_info_after() -> Duration {
+    if low_memory_mode() { Duration::from_secs(30) } else { REMOVE_UNREACHABLE_PEER_INFO_AFTER }
+}
+
+fn route_shrink_threshold() -> Option<usize> {
+    if low_memory_mode() { Some(0) } else { None }
+}
 
 type Version = u32;
 
@@ -356,10 +368,10 @@ impl SyncedRouteInfo {
         self.group_trust_map.remove(&peer_id);
         self.group_trust_map_cache.remove(&peer_id);
 
-        shrink_dashmap(&self.raw_peer_infos, None);
-        shrink_dashmap(&self.foreign_network, None);
-        shrink_dashmap(&self.group_trust_map, None);
-        shrink_dashmap(&self.group_trust_map_cache, None);
+        shrink_dashmap(&self.raw_peer_infos, route_shrink_threshold());
+        shrink_dashmap(&self.foreign_network, route_shrink_threshold());
+        shrink_dashmap(&self.group_trust_map, route_shrink_threshold());
+        shrink_dashmap(&self.group_trust_map_cache, route_shrink_threshold());
 
         self.version.inc();
     }
@@ -953,10 +965,10 @@ impl RouteTable {
             self.next_hop_map.contains_key(&v.peer_id)
         });
 
-        shrink_dashmap(&self.peer_infos, None);
-        shrink_dashmap(&self.next_hop_map, None);
-        shrink_dashmap(&self.ipv4_peer_id_map, None);
-        shrink_dashmap(&self.ipv6_peer_id_map, None);
+        shrink_dashmap(&self.peer_infos, route_shrink_threshold());
+        shrink_dashmap(&self.next_hop_map, route_shrink_threshold());
+        shrink_dashmap(&self.ipv4_peer_id_map, route_shrink_threshold());
+        shrink_dashmap(&self.ipv6_peer_id_map, route_shrink_threshold());
     }
 
     fn gen_next_hop_map_with_least_hop(
@@ -1609,7 +1621,7 @@ impl PeerRouteServiceImpl {
 
     fn remove_session(&self, dst_peer_id: PeerId) {
         self.sessions.remove(&dst_peer_id);
-        shrink_dashmap(&self.sessions, None);
+        shrink_dashmap(&self.sessions, route_shrink_threshold());
     }
 
     fn list_session_peers(&self) -> Vec<PeerId> {
@@ -2067,8 +2079,8 @@ impl PeerRouteServiceImpl {
         let mut to_remove = Vec::new();
         for (peer_id, peer_info) in self.synced_route_info.peer_infos.read().iter() {
             if let Ok(d) = now.duration_since(peer_info.last_update.unwrap().try_into().unwrap()) {
-                if d > REMOVE_DEAD_PEER_INFO_AFTER
-                    || (d > REMOVE_UNREACHABLE_PEER_INFO_AFTER
+                if d > remove_dead_peer_info_after()
+                    || (d > remove_unreachable_peer_info_after()
                         && !self.route_table.peer_reachable(*peer_id))
                 {
                     to_remove.push(*peer_id);
@@ -2093,7 +2105,7 @@ impl PeerRouteServiceImpl {
                 continue;
             };
 
-            if since_last_update > REMOVE_DEAD_PEER_INFO_AFTER {
+            if since_last_update > remove_dead_peer_info_after() {
                 to_remove.push(item.key().clone());
             }
         }
