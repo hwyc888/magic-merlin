@@ -170,6 +170,9 @@ jobs:
           grep -q 'reconnect_stats()' magictier/src/connector/manual.rs
           grep -q 'reconnect_backoff_secs' magictier/src/connector/manual.rs
           grep -q 'reconnect_backoff_is_fast_first_and_bounded' magictier/src/connector/manual.rs
+          grep -q 'add_peer_conn(&self, mut conn: PeerConn) -> bool' magictier/src/peers/peer.rs
+          grep -q 'peer connection rejected by active connection limit' magictier/src/peers/peer_manager.rs
+          grep -q 'foreign peer connection rejected by active connection limit' magictier/src/peers/foreign_network_manager.rs
           grep -q 'MAGICTIER_LOW_MEMORY=1' router-plugin/scripts/magic_config.sh
           grep -q -- '--machine-id' router-plugin/scripts/magic_config.sh
           grep -q 'stable_peer_id' magictier/src/peers/peer_manager.rs
