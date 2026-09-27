@@ -6,11 +6,11 @@ use std::{
     },
 };
 
-use dashmap::{DashMap, DashSet};
+use dashmap::DashSet;
 use tokio::{sync::mpsc, task::JoinSet, time::timeout};
 
 use crate::{
-    common::{dns::socket_addrs, join_joinset_background, low_memory_mode, PeerId},
+    common::{dns::socket_addrs, join_joinset_background, PeerId},
     peers::peer_conn::PeerConnId,
     proto::{
         api::instance::{
@@ -116,12 +116,6 @@ pub(crate) fn reconnect_stats() -> ReconnectStats {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ReconnectBackoff {
-    failures: u32,
-    retry_after: std::time::Instant,
-}
-
 #[derive(Debug, Clone)]
 struct ReconnResult {
     dead_url: String,
@@ -138,7 +132,6 @@ struct ConnectorManagerData {
     removed_conn_urls: Arc<DashSet<url::Url>>,
     net_ns: NetNS,
     global_ctx: ArcGlobalCtx,
-    reconnect_backoff: DashMap<url::Url, ReconnectBackoff>,
 }
 
 pub struct ManualConnectorManager {
@@ -162,7 +155,6 @@ impl ManualConnectorManager {
                 removed_conn_urls: Arc::new(DashSet::new()),
                 net_ns: global_ctx.net_ns.clone(),
                 global_ctx,
-                reconnect_backoff: DashMap::new(),
             }),
             tasks,
         };
@@ -220,7 +212,7 @@ impl ManualConnectorManager {
         for item in self.data.connectors.iter() {
             let conn_url = item.key().clone();
             let mut status = ConnectorStatus::Connected;
-            if dead_urls.contains(&conn_url) || self.data.reconnect_backoff.contains_key(&conn_url) {
+            if dead_urls.contains(&conn_url) {
                 status = ConnectorStatus::Disconnected;
             }
             ret.insert(
@@ -272,8 +264,7 @@ impl ManualConnectorManager {
                         assert!(insert_succ);
 
                         tasks.lock().unwrap().spawn(async move {
-                            let reconn_ret = Self::conn_reconnect(data_clone.clone(), dead_url.clone()).await;
-                            Self::update_reconnect_backoff(&data_clone, &dead_url, reconn_ret.is_ok());
+                            let reconn_ret = Self::conn_reconnect(data_clone.clone(), dead_url.clone() ).await;
                             let _ = sender.send(reconn_ret).await;
 
                             data_clone.reconnecting.remove(&dead_url).unwrap();
@@ -295,7 +286,6 @@ impl ManualConnectorManager {
         for it in data.removed_conn_urls.iter() {
             let url = it.key();
             if data.connectors.remove(url).is_some() {
-                data.reconnect_backoff.remove(url);
                 tracing::warn!("connector: {}, removed", url);
                 continue;
             } else if data.reconnecting.contains(url) {
@@ -319,66 +309,17 @@ impl ManualConnectorManager {
             tracing::warn!("peer manager is gone, exit");
             return ret;
         };
-        let now = std::time::Instant::now();
         for url in data.connectors.iter().map(|x| x.key().clone()) {
-            let alive = pm.get_peer_map().is_client_url_alive(&url)
-                || pm
+            if !pm.get_peer_map().is_client_url_alive(&url)
+                && !pm
                     .get_foreign_network_client()
                     .get_peer_map()
-                    .is_client_url_alive(&url);
-            if alive {
-                data.reconnect_backoff.remove(&url);
-                continue;
-            }
-
-            if low_memory_mode()
-                && data
-                    .reconnect_backoff
-                    .get(&url)
-                    .is_some_and(|state| now < state.retry_after)
+                    .is_client_url_alive(&url)
             {
-                continue;
+                ret.insert(url.clone());
             }
-            ret.insert(url.clone());
         }
         ret
-    }
-
-    fn reconnect_backoff_secs(failures: u32) -> u64 {
-        match failures {
-            0 | 1 => 1,
-            2 => 2,
-            3 => 4,
-            4 => 8,
-            5 => 15,
-            _ => 30,
-        }
-    }
-
-    fn update_reconnect_backoff(
-        data: &ConnectorManagerData,
-        url: &url::Url,
-        success: bool,
-    ) {
-        if success || !low_memory_mode() {
-            data.reconnect_backoff.remove(url);
-            return;
-        }
-
-        let failures = data
-            .reconnect_backoff
-            .get(url)
-            .map(|state| state.failures.saturating_add(1))
-            .unwrap_or(1);
-        let retry_after =
-            std::time::Instant::now() + std::time::Duration::from_secs(Self::reconnect_backoff_secs(failures));
-        data.reconnect_backoff.insert(
-            url.clone(),
-            ReconnectBackoff {
-                failures,
-                retry_after,
-            },
-        );
     }
 
     async fn conn_reconnect_with_ip_version(
@@ -535,16 +476,6 @@ mod tests {
     };
 
     use super::*;
-
-    #[test]
-    fn reconnect_backoff_is_fast_first_and_bounded() {
-        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(1), 1);
-        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(2), 2);
-        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(3), 4);
-        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(5), 15);
-        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(6), 30);
-        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(100), 30);
-    }
 
     #[tokio::test]
     async fn test_reconnect_with_connecting_addr() {
