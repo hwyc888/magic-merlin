@@ -458,9 +458,10 @@ impl ForeignNetworkManagerData {
         {
             self.network_peer_last_update.remove(network_name);
         }
-        shrink_dashmap(&self.peer_network_map, None);
-        shrink_dashmap(&self.network_peer_maps, None);
-        shrink_dashmap(&self.network_peer_last_update, None);
+        let shrink_threshold = if low_memory_mode() { Some(0) } else { None };
+        shrink_dashmap(&self.peer_network_map, shrink_threshold);
+        shrink_dashmap(&self.network_peer_maps, shrink_threshold);
+        shrink_dashmap(&self.network_peer_last_update, shrink_threshold);
     }
 
     async fn clear_no_conn_peer(&self, network_name: &String) {

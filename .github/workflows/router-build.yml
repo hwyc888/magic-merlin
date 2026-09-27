@@ -207,6 +207,9 @@ jobs:
           grep -q 'MAGICTIER_LOW_MEMORY=1' router-plugin/scripts/magic_config.sh
           grep -q -- '--machine-id' router-plugin/scripts/magic_config.sh
           grep -q 'stable_peer_id' magictier/src/peers/peer_manager.rs
+          grep -q 'LOW_MEMORY_MAX_UDP_SOCKET_ARRAY: usize = 12' magictier/src/connector/udp_hole_punch/common.rs
+          grep -q 'peers_to_connect.truncate(1)' magictier/src/connector/udp_hole_punch/mod.rs
+          grep -q 'stale_after = if low_memory { 60 } else { 180 }' magictier/src/common/stats_manager.rs
           grep -q 'MAGICTIER_HEALTH_STATUS_FILE' router-plugin/scripts/magic_config.sh
           grep -q 'health_status_fields' router-plugin/scripts/magic_config.sh
           grep -q 'id="memory_health"' router-plugin/webs/Module_magic.asp

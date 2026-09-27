@@ -13,8 +13,8 @@ use zerocopy::FromBytes as _;
 
 use crate::{
     common::{
-        error::Error, global_ctx::ArcGlobalCtx, join_joinset_background, netns::NetNS,
-        stun::StunInfoCollectorTrait as _, PeerId,
+        error::Error, global_ctx::ArcGlobalCtx, join_joinset_background, low_memory_mode,
+        netns::NetNS, stun::StunInfoCollectorTrait as _, PeerId,
     },
     defer,
     peers::peer_manager::PeerManager,
@@ -27,6 +27,8 @@ use crate::{
 };
 
 pub(crate) const HOLE_PUNCH_PACKET_BODY_LEN: u16 = 16;
+const LOW_MEMORY_MAX_UDP_SOCKET_ARRAY: usize = 12;
+const LOW_MEMORY_MAX_UDP_PUNCH_LISTENERS: usize = 4;
 
 fn generate_shuffled_port_vec() -> Vec<u16> {
     let mut rng = rand::thread_rng();
@@ -212,6 +214,11 @@ impl UdpSocketArray {
     pub fn new(max_socket_count: usize, net_ns: NetNS) -> Self {
         let tasks = Arc::new(std::sync::Mutex::new(JoinSet::new()));
         join_joinset_background(tasks.clone(), "UdpSocketArray".to_owned());
+        let max_socket_count = if low_memory_mode() {
+            max_socket_count.min(LOW_MEMORY_MAX_UDP_SOCKET_ARRAY)
+        } else {
+            max_socket_count
+        };
 
         Self {
             sockets: Arc::new(DashMap::new()),
@@ -474,10 +481,11 @@ impl PunchHoleServerCommon {
             loop {
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 {
-                    // remove listener that is not active for 40 seconds but keep listeners that are selected less than 30 seconds
+                    let (active_ttl, selected_ttl) =
+                        if low_memory_mode() { (20, 10) } else { (40, 30) };
                     l.lock().await.retain(|listener| {
-                        listener.last_active_time.load().elapsed().as_secs() < 40
-                            || listener.last_select_time.load().elapsed().as_secs() < 30
+                        listener.last_active_time.load().elapsed().as_secs() < active_ttl
+                            || listener.last_select_time.load().elapsed().as_secs() < selected_ttl
                     });
                 }
             }
@@ -521,7 +529,14 @@ impl PunchHoleServerCommon {
         let all_listener_sockets = &self.listeners;
 
         let mut use_last = false;
-        if all_listener_sockets.lock().await.len() < 16 || use_new_listener {
+        let listener_limit = if low_memory_mode() {
+            LOW_MEMORY_MAX_UDP_PUNCH_LISTENERS
+        } else {
+            16
+        };
+        if all_listener_sockets.lock().await.len() < listener_limit
+            || (use_new_listener && !low_memory_mode())
+        {
             tracing::warn!("creating new udp hole punching listener");
             all_listener_sockets.lock().await.push(
                 UdpHolePunchListener::new(self.peer_mgr.clone())

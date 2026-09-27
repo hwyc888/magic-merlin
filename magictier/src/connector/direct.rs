@@ -548,7 +548,8 @@ impl PeerTaskLauncher for DirectConnectorLauncher {
     async fn collect_peers_need_task(&self, data: &Self::Data) -> Vec<Self::CollectPeerItem> {
         data.peer_black_list.cleanup();
         let my_peer_id = data.peer_manager.my_peer_id();
-        data.peer_manager
+        let mut peers = data
+            .peer_manager
             .list_peers()
             .await
             .into_iter()
@@ -557,7 +558,11 @@ impl PeerTaskLauncher for DirectConnectorLauncher {
                     && !data.peer_manager.has_directly_connected_conn(*peer_id)
                     && !data.peer_black_list.contains(peer_id)
             })
-            .collect()
+            .collect::<Vec<_>>();
+        if low_memory_mode() {
+            peers.truncate(2);
+        }
+        peers
     }
 
     async fn launch_task(

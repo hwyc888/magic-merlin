@@ -2744,7 +2744,10 @@ impl PeerRoute {
 
     async fn clear_expired_peer(service_impl: Arc<PeerRouteServiceImpl>) {
         loop {
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(
+                if low_memory_mode() { 15 } else { 60 },
+            ))
+            .await;
             service_impl.clear_expired_peer();
             // TODO: use debug log level for this.
             tracing::debug!(?service_impl, "clear_expired_peer");
