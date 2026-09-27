@@ -55,17 +55,20 @@ impl PeerMap {
             .issue_event(GlobalCtxEvent::PeerAdded(peer_id));
     }
 
-    pub async fn add_new_peer_conn(&self, peer_conn: PeerConn) {
+    pub async fn add_new_peer_conn(&self, peer_conn: PeerConn) -> bool {
         let _ = self.maintain_alive_client_urls(&peer_conn);
         let peer_id = peer_conn.get_peer_id();
         let no_entry = self.peer_map.get(&peer_id).is_none();
         if no_entry {
             let new_peer = Peer::new(peer_id, self.packet_send.clone(), self.global_ctx.clone());
-            new_peer.add_peer_conn(peer_conn).await;
-            self.add_new_peer(new_peer).await;
+            let accepted = new_peer.add_peer_conn(peer_conn).await;
+            if accepted {
+                self.add_new_peer(new_peer).await;
+            }
+            accepted
         } else {
             let peer = self.peer_map.get(&peer_id).unwrap().clone();
-            peer.add_peer_conn(peer_conn).await;
+            peer.add_peer_conn(peer_conn).await
         }
     }
 
