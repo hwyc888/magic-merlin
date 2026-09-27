@@ -224,6 +224,9 @@ jobs:
           grep -q '/res/icon-magic.png' router-plugin/webs/Module_magic.asp
           grep -q 'RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_HARD_LIMIT_KB="${magic_rss_hard_limit_kb:-98304}"' router-plugin/scripts/magic_config.sh
+          grep -q 'RSS_AUTORESTART_ENABLE="${magic_rss_restart_enable:-0}"' router-plugin/scripts/magic_config.sh
+          grep -q '稳定模式仅告警，不重启核心' router-plugin/scripts/magic_config.sh
+          grep -q 'magic_rss_restart_enable="0"' router-plugin/install.sh
           grep -q 'RSS_OVER_LIMIT_MAX=3' router-plugin/scripts/magic_config.sh
           grep -q 'sleep 20' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
@@ -254,7 +257,7 @@ jobs:
           grep -q '开机自动运行' router-plugin/webs/Module_magic.asp
           grep -q '不会重启路由器' router-plugin/scripts/magic_config.sh
           ! grep -qi 'reboot' router-plugin/scripts/magic_config.sh
-          grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
+          ! grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
           grep -q 'magic_periodic_restart_enable' router-plugin/install.sh
           grep -q 'magic_periodic_restart_mode' router-plugin/install.sh
           grep -q 'magic_periodic_restart_time' router-plugin/install.sh
