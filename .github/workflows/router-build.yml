@@ -197,7 +197,7 @@ jobs:
           grep -q 'DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD: u64 = 4 \* 1024' magictier/src/peers/peer.rs
           grep -q 'current_path_active' magictier/src/peers/peer.rs
           grep -q 'RPC_TRANSPORT_CHANNEL_CAPACITY: usize = 256' magictier/src/peers/peer_manager.rs
-          grep -q 'mpsc::channel(RPC_TRANSPORT_CHANNEL_CAPACITY)' magictier/src/peers/peer_manager.rs
+          grep -q 'mpsc::channel(rpc_transport_channel_capacity())' magictier/src/peers/peer_manager.rs
           ! grep -q 'mpsc::unbounded_channel()' magictier/src/peers/peer_manager.rs
           grep -q 'self.packet_send.try_send(msg)' magictier/src/peers/peer_map.rs
           grep -q 'reserved_network_name' magictier/src/peers/peer_manager.rs
@@ -207,6 +207,7 @@ jobs:
           grep -q 'MAGICTIER_LOW_MEMORY=1' router-plugin/scripts/magic_config.sh
           grep -q -- '--machine-id' router-plugin/scripts/magic_config.sh
           grep -q 'stable_peer_id' magictier/src/peers/peer_manager.rs
+          grep -q 'active_resource_counts' magictier/src/peers/peer_manager.rs
           grep -q 'LOW_MEMORY_MAX_UDP_SOCKET_ARRAY: usize = 12' magictier/src/connector/udp_hole_punch/common.rs
           grep -q 'peers_to_connect.truncate(1)' magictier/src/connector/udp_hole_punch/mod.rs
           grep -q 'stale_after = if low_memory { 60 } else { 180 }' magictier/src/common/stats_manager.rs
@@ -215,8 +216,8 @@ jobs:
           grep -q 'id="memory_health"' router-plugin/webs/Module_magic.asp
           grep -q 'id="network_health"' router-plugin/webs/Module_magic.asp
           grep -q 'socket_mem_kb' router-plugin/scripts/magic_health.sh
-          test "$(cat router-plugin/version)" = "1.2.6"
-          grep -q '"version": "1.2.6"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.2.7"
+          grep -q '"version": "1.2.7"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
           grep -q 'window.top.location.replace(target)' router-plugin/webs/Module_magic.asp
           grep -q 'onunload="unloadPage();"' router-plugin/webs/Module_magic.asp
