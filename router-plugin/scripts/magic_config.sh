@@ -16,6 +16,7 @@ INTERNAL_LOG_MAX_BYTES="65536"
 INTERNAL_LOG_KEEP_BYTES="32768"
 RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"
 RSS_HARD_LIMIT_KB="${magic_rss_hard_limit_kb:-98304}"
+RSS_AUTORESTART_ENABLE="${magic_rss_restart_enable:-0}"
 RSS_OVER_LIMIT_MAX=3
 RSS_RESTART_STATE="/tmp/magic_rss_restart.state"
 RSS_RESTART_WINDOW=600
@@ -406,41 +407,50 @@ start_monitor() {
             fi
 
             if [ "${RSS_TRIGGER}" = "1" ]; then
-                NOW="$(date +%s 2>/dev/null)"
-                [ -n "${NOW}" ] || NOW=0
-                WINDOW_START=0
-                RESTART_COUNT=0
-                if [ -f "${RSS_RESTART_STATE}" ]; then
-                    read WINDOW_START RESTART_COUNT < "${RSS_RESTART_STATE}" 2>/dev/null
-                fi
-                [ -n "${WINDOW_START}" ] || WINDOW_START=0
-                [ -n "${RESTART_COUNT}" ] || RESTART_COUNT=0
-                if [ "${NOW}" -eq 0 ] || [ $((NOW - WINDOW_START)) -gt "${RSS_RESTART_WINDOW}" ] 2>/dev/null; then
-                    WINDOW_START="${NOW}"
+                if [ "${RSS_AUTORESTART_ENABLE}" != "1" ]; then
+                    if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
+                        log_user "⚠ MagicTier RSS ${RSS}KB 超过硬限制 ${RSS_HARD_LIMIT_KB}KB；稳定模式仅告警，不重启核心。"
+                    else
+                        log_user "⚠ MagicTier RSS 已连续 ${RSS_OVER_LIMIT_COUNT} 次超过 ${RSS_LIMIT_KB}KB；稳定模式仅告警，不重启核心。"
+                    fi
+                    RSS_OVER_LIMIT_COUNT=0
+                else
+                    NOW="$(date +%s 2>/dev/null)"
+                    [ -n "${NOW}" ] || NOW=0
+                    WINDOW_START=0
                     RESTART_COUNT=0
-                fi
-                RESTART_COUNT=$((RESTART_COUNT + 1))
-                echo "${WINDOW_START} ${RESTART_COUNT}" > "${RSS_RESTART_STATE}" 2>/dev/null
+                    if [ -f "${RSS_RESTART_STATE}" ]; then
+                        read WINDOW_START RESTART_COUNT < "${RSS_RESTART_STATE}" 2>/dev/null
+                    fi
+                    [ -n "${WINDOW_START}" ] || WINDOW_START=0
+                    [ -n "${RESTART_COUNT}" ] || RESTART_COUNT=0
+                    if [ "${NOW}" -eq 0 ] || [ $((NOW - WINDOW_START)) -gt "${RSS_RESTART_WINDOW}" ] 2>/dev/null; then
+                        WINDOW_START="${NOW}"
+                        RESTART_COUNT=0
+                    fi
+                    RESTART_COUNT=$((RESTART_COUNT + 1))
+                    echo "${WINDOW_START} ${RESTART_COUNT}" > "${RSS_RESTART_STATE}" 2>/dev/null
 
-                if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
-                    log_user "⚠ 内存保护触发：MagicTier RSS ${RSS}KB 超过硬限制 ${RSS_HARD_LIMIT_KB}KB。"
-                else
-                    log_user "⚠ 内存保护触发：MagicTier RSS 已连续 ${RSS_OVER_LIMIT_COUNT} 次超过 ${RSS_LIMIT_KB}KB。"
-                fi
-                kill "${PID}" 2>/dev/null
-                sleep 2
-                pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
-                rm -f "${PIDFILE}"
+                    if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
+                        log_user "⚠ 内存保护触发：MagicTier RSS ${RSS}KB 超过硬限制 ${RSS_HARD_LIMIT_KB}KB。"
+                    else
+                        log_user "⚠ 内存保护触发：MagicTier RSS 已连续 ${RSS_OVER_LIMIT_COUNT} 次超过 ${RSS_LIMIT_KB}KB。"
+                    fi
+                    kill "${PID}" 2>/dev/null
+                    sleep 2
+                    pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
+                    rm -f "${PIDFILE}"
 
-                if [ "${RESTART_COUNT}" -le "${RSS_RESTART_MAX}" ] 2>/dev/null; then
-                    log_user "正在自动重启 MagicTier 核心程序，不会重启路由器。"
-                    rm -f "${MONITOR_PIDFILE}"
-                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
-                else
-                    log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
-                    dbus set magic_enable="0"
+                    if [ "${RESTART_COUNT}" -le "${RSS_RESTART_MAX}" ] 2>/dev/null; then
+                        log_user "正在自动重启 MagicTier 核心程序，不会重启路由器。"
+                        rm -f "${MONITOR_PIDFILE}"
+                        ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
+                    else
+                        log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
+                        dbus set magic_enable="0"
+                    fi
+                    exit 0
                 fi
-                exit 0
             fi
 
             if ! periodic_monitor_tick; then
