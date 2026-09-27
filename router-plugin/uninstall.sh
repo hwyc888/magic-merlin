@@ -6,7 +6,7 @@ if [ -x /koolshare/scripts/magic_config.sh ]; then
     sh /koolshare/scripts/magic_config.sh stop >/dev/null 2>&1
 fi
 
-rm -f /koolshare/init.d/S97magic.sh /koolshare/init.d/N97magic.sh
+rm -f /koolshare/init.d/S97magic.sh /koolshare/init.d/N97magic.sh /koolshare/init.d/V97magic.sh
 rm -f /koolshare/bin/magic-core /koolshare/bin/magic-cli
 rm -f /koolshare/scripts/magic_config.sh /koolshare/scripts/magic_health.sh /koolshare/scripts/uninstall_magic.sh
 rm -f /koolshare/webs/Module_magic.asp /koolshare/res/icon-magic.png
