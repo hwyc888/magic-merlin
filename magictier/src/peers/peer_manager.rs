@@ -75,20 +75,28 @@ fn rpc_transport_channel_capacity() -> usize {
     }
 }
 
-fn stable_peer_id_from_parts(machine_id: uuid::Uuid, network_name: &str, instance_name: &str) -> PeerId {
+fn stable_peer_id_from_parts(
+    machine_id: uuid::Uuid,
+    instance_id: uuid::Uuid,
+    network_name: &str,
+) -> PeerId {
     let mut hasher = Sha256::new();
     hasher.update(machine_id.as_bytes());
     hasher.update([0u8]);
-    hasher.update(network_name.as_bytes());
+    hasher.update(instance_id.as_bytes());
     hasher.update([0u8]);
-    hasher.update(instance_name.as_bytes());
+    hasher.update(network_name.as_bytes());
     let digest = hasher.finalize();
     let peer_id = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
     if peer_id == 0 { 1 } else { peer_id }
 }
 
 fn stable_peer_id(global_ctx: &ArcGlobalCtx) -> PeerId {
-    stable_peer_id_from_parts(get_machine_id(), &global_ctx.get_network_name(), &global_ctx.inst_name)
+    stable_peer_id_from_parts(
+        get_machine_id(),
+        global_ctx.get_id(),
+        &global_ctx.get_network_name(),
+    )
 }
 
 #[cfg(test)]
@@ -98,12 +106,17 @@ mod stable_peer_id_tests {
     #[test]
     fn peer_id_is_stable_and_network_scoped() {
         let machine_id = uuid::Uuid::from_u128(0x1234567890abcdef1234567890abcdef);
-        let first = stable_peer_id_from_parts(machine_id, "network-a", "default");
-        let second = stable_peer_id_from_parts(machine_id, "network-a", "default");
-        let other_network = stable_peer_id_from_parts(machine_id, "network-b", "default");
+        let instance_id = uuid::Uuid::from_u128(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);
+        let other_instance_id = uuid::Uuid::from_u128(0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb);
+        let first = stable_peer_id_from_parts(machine_id, instance_id, "network-a");
+        let second = stable_peer_id_from_parts(machine_id, instance_id, "network-a");
+        let other_network = stable_peer_id_from_parts(machine_id, instance_id, "network-b");
+        let other_instance =
+            stable_peer_id_from_parts(machine_id, other_instance_id, "network-a");
         assert_eq!(first, second);
         assert_ne!(first, 0);
         assert_ne!(first, other_network);
+        assert_ne!(first, other_instance);
     }
 }
 

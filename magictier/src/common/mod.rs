@@ -4,6 +4,7 @@ use std::{
     io::Write as _,
     sync::{Arc, Mutex, OnceLock},
 };
+use sha2::{Digest, Sha256};
 use time::util::refresh_tz;
 use tokio::{task::JoinSet, time::timeout};
 use tracing::Instrument;
@@ -55,6 +56,20 @@ pub fn low_memory_mode() -> bool {
             || value.eq_ignore_ascii_case("yes")
             || value.eq_ignore_ascii_case("on")
     })
+}
+
+pub fn stable_instance_id(network_name: &str, instance_name: &str) -> uuid::Uuid {
+    let machine_id = get_machine_id();
+    let mut hasher = Sha256::new();
+    hasher.update(machine_id.as_bytes());
+    hasher.update([0u8]);
+    hasher.update(network_name.as_bytes());
+    hasher.update([0u8]);
+    hasher.update(instance_name.as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    uuid::Uuid::from_bytes(bytes)
 }
 
 pub fn new_peer_id() -> PeerId {
