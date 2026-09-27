@@ -536,6 +536,16 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn reconnect_backoff_is_fast_first_and_bounded() {
+        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(1), 1);
+        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(2), 2);
+        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(3), 4);
+        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(5), 15);
+        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(6), 30);
+        assert_eq!(ManualConnectorManager::reconnect_backoff_secs(100), 30);
+    }
+
     #[tokio::test]
     async fn test_reconnect_with_connecting_addr() {
         set_global_var!(MANUAL_CONNECTOR_RECONNECT_INTERVAL_MS, 1);
