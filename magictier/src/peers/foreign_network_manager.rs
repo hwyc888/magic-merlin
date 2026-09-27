@@ -643,7 +643,12 @@ impl ForeignNetworkManager {
             }
         }
 
-        entry.peer_map.add_new_peer_conn(peer_conn).await;
+        if !entry.peer_map.add_new_peer_conn(peer_conn).await {
+            return Err(anyhow::anyhow!(
+                "foreign peer connection rejected by active connection limit"
+            )
+            .into());
+        }
         Ok(())
     }
 
