@@ -410,11 +410,7 @@ impl PeerManager {
                 "network identity not match".to_string(),
             ));
         }
-        if !self.peers.add_new_peer_conn(peer_conn).await {
-            return Err(Error::AnyhowError(anyhow::anyhow!(
-                "peer connection rejected by active connection limit"
-            )));
-        }
+        self.peers.add_new_peer_conn(peer_conn).await;
         Ok(())
     }
 
@@ -432,10 +428,8 @@ impl PeerManager {
             == self.global_ctx.get_network_identity().network_name
         {
             self.add_new_peer_conn(peer).await?;
-        } else if !self.foreign_network_client.add_new_peer_conn(peer).await {
-            return Err(Error::AnyhowError(anyhow::anyhow!(
-                "foreign peer connection rejected by active connection limit"
-            )));
+        } else {
+            self.foreign_network_client.add_new_peer_conn(peer).await;
         }
         Ok((peer_id, conn_id))
     }
