@@ -344,6 +344,13 @@ impl Peer {
     pub fn get_default_conn_id(&self) -> PeerConnId {
         self.default_conn_id.load()
     }
+
+    pub fn active_conn_count(&self) -> usize {
+        self.conns
+            .iter()
+            .filter(|entry| !entry.value().get_close_notifier().is_closed())
+            .count()
+    }
 }
 
 // pritn on drop
