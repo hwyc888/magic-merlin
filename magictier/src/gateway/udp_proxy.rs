@@ -25,7 +25,7 @@ use tokio::{
 use tracing::Level;
 
 use crate::{
-    common::{error::Error, global_ctx::ArcGlobalCtx, scoped_task::ScopedTask, PeerId},
+    common::{error::Error, global_ctx::ArcGlobalCtx, low_memory_mode, scoped_task::ScopedTask, PeerId},
     gateway::ip_reassembler::{compose_ipv4_packet, ComposeIpv4PacketArgs},
     peers::{peer_manager::PeerManager, PeerPacketFilter},
     tunnel::{
@@ -144,7 +144,13 @@ impl UdpNatEntry {
         real_ipv4: Ipv4Addr,
         mapped_ipv4: Ipv4Addr,
     ) {
-        let (s, mut r) = channel(128);
+        let nat_queue_capacity = if low_memory_mode() { 64 } else { 128 };
+        let (s, mut r) = channel(nat_queue_capacity);
+        let (buffer_min_size, buffer_max_size) = if low_memory_mode() {
+            (32 * 1024 + 28, 64 * 1024 + 28)
+        } else {
+            (64 * 1024 + 28, 128 * 1024 + 28)
+        };
 
         let self_clone = self.clone();
         let recv_task = ScopedTask::from(tokio::spawn(async move {
@@ -157,7 +163,7 @@ impl UdpNatEntry {
                     break;
                 }
 
-                reserve_buf(&mut cur_buf, 64 * 1024 + 28, 128 * 1024 + 28);
+                reserve_buf(&mut cur_buf, buffer_min_size, buffer_max_size);
                 assert_eq!(cur_buf.len(), 0);
                 unsafe {
                     cur_buf.advance_mut(28);
@@ -232,7 +238,8 @@ impl UdpNatEntry {
     }
 
     fn is_active(&self) -> bool {
-        self.last_active_time.load().elapsed().as_secs() < 180
+        let idle_timeout_secs = if low_memory_mode() { 90 } else { 180 };
+        self.last_active_time.load().elapsed().as_secs() < idle_timeout_secs
     }
 }
 
@@ -402,7 +409,8 @@ impl UdpProxy {
         peer_manager: Arc<PeerManager>,
     ) -> Result<Arc<Self>, Error> {
         let cidr_set = CidrSet::new(global_ctx.clone());
-        let (sender, receiver) = channel(1024);
+        let proxy_queue_capacity = if low_memory_mode() { 256 } else { 1024 };
+        let (sender, receiver) = channel(proxy_queue_capacity);
         let ret = Self {
             global_ctx,
             peer_manager,
