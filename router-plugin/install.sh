@@ -174,9 +174,9 @@ install_now() {
         dbus set magic_log_max_bytes="131072"
     fi
     RSS_LIMIT_CURRENT="$(dbus get magic_rss_limit_kb 2>/dev/null)"
-    if [ -z "${RSS_LIMIT_CURRENT}" ] || [ "${RSS_LIMIT_CURRENT}" = "262144" ]; then
-        dbus set magic_rss_limit_kb="65536"
-    fi
+    [ -n "${RSS_LIMIT_CURRENT}" ] || dbus set magic_rss_limit_kb="65536"
+    RSS_RESTART_ENABLE_CURRENT="$(dbus get magic_rss_restart_enable 2>/dev/null)"
+    [ -n "${RSS_RESTART_ENABLE_CURRENT}" ] || dbus set magic_rss_restart_enable="0"
     PERIODIC_RESTART_ENABLE_CURRENT="$(dbus get magic_periodic_restart_enable 2>/dev/null)"
     [ -n "${PERIODIC_RESTART_ENABLE_CURRENT}" ] || dbus set magic_periodic_restart_enable="0"
     PERIODIC_RESTART_MODE_CURRENT="$(dbus get magic_periodic_restart_mode 2>/dev/null)"
