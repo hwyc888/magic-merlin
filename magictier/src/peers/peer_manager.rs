@@ -1365,13 +1365,7 @@ impl PeerManager {
         self.tasks.lock().await.spawn(async move {
             let pid = std::process::id();
             loop {
-                let peer_ids = peer_map.list_peers_with_conn().await;
-                let mut connection_count = 0usize;
-                for peer_id in &peer_ids {
-                    if let Some(connections) = peer_map.list_peer_conns(*peer_id).await {
-                        connection_count = connection_count.saturating_add(connections.len());
-                    }
-                }
+                let (peer_count, connection_count) = peer_map.active_resource_counts();
 
                 let reconnect_count = crate::connector::manual::reconnect_attempt_count();
                 let timestamp = SystemTime::now()
@@ -1381,7 +1375,7 @@ impl PeerManager {
                 let body = format!(
                     "{} {} {} {} {}\n",
                     pid,
-                    peer_ids.len(),
+                    peer_count,
                     connection_count,
                     reconnect_count,
                     timestamp
