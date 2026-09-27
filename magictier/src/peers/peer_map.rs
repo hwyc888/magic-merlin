@@ -288,6 +288,20 @@ impl PeerMap {
         ret
     }
 
+    pub fn active_resource_counts(&self) -> (usize, usize) {
+        let mut peer_count = 0usize;
+        let mut connection_count = 0usize;
+        for peer in self.peer_map.iter() {
+            let active_connections = peer.value().active_conn_count();
+            if active_connections == 0 {
+                continue;
+            }
+            peer_count = peer_count.saturating_add(1);
+            connection_count = connection_count.saturating_add(active_connections);
+        }
+        (peer_count, connection_count)
+    }
+
     pub async fn list_peer_conns(&self, peer_id: PeerId) -> Option<Vec<PeerConnInfo>> {
         if let Some(p) = self.get_peer_by_id(peer_id) {
             Some(p.list_peer_conns().await)
