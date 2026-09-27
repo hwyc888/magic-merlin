@@ -208,7 +208,7 @@ impl Peer {
         }
     }
 
-    pub async fn add_peer_conn(&self, mut conn: PeerConn) {
+    pub async fn add_peer_conn(&self, mut conn: PeerConn) -> bool {
         if low_memory_mode() {
             let incoming_kind = conn.is_hole_punched();
             let mut active_total = 0usize;
@@ -232,7 +232,7 @@ impl Peer {
                     incoming_kind,
                     "drop extra peer connection in low-memory mode"
                 );
-                return;
+                return false;
             }
         }
 
@@ -256,6 +256,7 @@ impl Peer {
 
         self.global_ctx
             .issue_event(GlobalCtxEvent::PeerConnAdded(conn_info));
+        true
     }
 
     async fn select_conn(&self) -> Option<ArcPeerConn> {
