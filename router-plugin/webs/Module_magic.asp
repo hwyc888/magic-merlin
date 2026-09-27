@@ -166,9 +166,9 @@ function refresh_status(){
                 var lastResult=parseInt(r[4],10)||0;
                 var lastResultText=lastResult==1?"成功":(lastResult==2?"失败":"无");
                 var stability=inFlight>0?"正在重连":(consecutive>0?"最近重连失败":(recent>=4?"近期重连较多":"稳定"));
-                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　状态 "+stability+"　累计重连 "+h[7]+" 次　近10分钟 "+recent+" 次　连续失败 "+consecutive+" 次　最近结果 "+lastResultText+" "+format_epoch_time(r[5]);
+                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　固定Peer状态 "+stability+"　固定Peer重连累计 "+h[7]+" 次　近10分钟 "+recent+" 次　连续失败 "+consecutive+" 次　最近结果 "+lastResultText+" "+format_epoch_time(r[5]);
             }else{
-                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　累计重连 "+h[7]+" 次";
+                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　固定Peer重连累计 "+h[7]+" 次";
             }
         }
         var p=t.match(/\"periodic_enabled\"\s*:\s*(\d+)[^}]*\"periodic_mode\"\s*:\s*\"([^\"]+)\"[^}]*\"periodic_due\"\s*:\s*(\d+)[^}]*\"periodic_remaining\"\s*:\s*(\d+)[^}]*\"periodic_attempt\"\s*:\s*(\d+)[^}]*\"periodic_max\"\s*:\s*(\d+)/);
