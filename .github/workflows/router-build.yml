@@ -189,8 +189,8 @@ jobs:
           grep -q 'kmalloc_65536_kb' router-plugin/scripts/magic_health.sh
           sh -n router-plugin/scripts/magic_config.sh
           sh -n router-plugin/scripts/magic_health.sh
-          test "$(cat router-plugin/version)" = "1.2.8"
-          grep -q '"version": "1.2.8"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.2.9"
+          grep -q '"version": "1.2.9"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
           grep -q 'window.top.location.replace(target)' router-plugin/webs/Module_magic.asp
           grep -q 'onunload="unloadPage();"' router-plugin/webs/Module_magic.asp
@@ -235,6 +235,13 @@ jobs:
           grep -q 'is_init_invocation' router-plugin/scripts/magic_config.sh
           grep -q '/koolshare/init.d/S97magic.sh' router-plugin/install.sh
           grep -q '/koolshare/init.d/N97magic.sh' router-plugin/install.sh
+          grep -q '/koolshare/init.d/V97magic.sh' router-plugin/install.sh
+          grep -q '/koolshare/init.d/V97magic.sh' router-plugin/uninstall.sh
+          grep -q 'start_nat)' router-plugin/scripts/magic_config.sh
+          grep -q 'schedule_start_retry' router-plugin/scripts/magic_config.sh
+          grep -q '保留启用状态' router-plugin/scripts/magic_config.sh
+          ! grep -q 'MagicTier启动失败，已停止自动运行' router-plugin/scripts/magic_config.sh
+          grep -q '开机自动运行' router-plugin/webs/Module_magic.asp
           grep -q '不会重启路由器' router-plugin/scripts/magic_config.sh
           ! grep -qi 'reboot' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
