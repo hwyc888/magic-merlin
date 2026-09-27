@@ -63,10 +63,14 @@ while [ "${I}" -lt "${SAMPLES}" ]; do
         PAGES="$(awk '{for(i=1;i<=NF;i++) if($i=="mem" && (i+1)<=NF) sum += $(i+1)} END {print sum+0}' "${SOCKSTAT}" 2>/dev/null)"
         case "${PAGES}" in ''|*[!0-9]*) PAGES=0 ;; esac
         SOCKET_MEM_PAGES=$((SOCKET_MEM_PAGES + PAGES))
-        TCP_INUSE=$((TCP_INUSE + $(awk '/^TCP/ {for(i=1;i<=NF;i++) if($i=="inuse") {print $(i+1)+0; exit}}' "${SOCKSTAT}" 2>/dev/null || echo 0)))
-        TCP_ORPHAN=$((TCP_ORPHAN + $(awk '/^TCP/ {for(i=1;i<=NF;i++) if($i=="orphan") {print $(i+1)+0; exit}}' "${SOCKSTAT}" 2>/dev/null || echo 0)))
-        TCP_TW=$((TCP_TW + $(awk '/^TCP/ {for(i=1;i<=NF;i++) if($i=="tw") {print $(i+1)+0; exit}}' "${SOCKSTAT}" 2>/dev/null || echo 0)))
-        UDP_INUSE=$((UDP_INUSE + $(awk '/^UDP/ {for(i=1;i<=NF;i++) if($i=="inuse") {print $(i+1)+0; exit}}' "${SOCKSTAT}" 2>/dev/null || echo 0)))
+        TCP_INUSE_VALUE="$(awk '$1 ~ /^TCP/ {for(i=1;i<=NF;i++) if($i=="inuse") sum += $(i+1)} END {print sum+0}' "${SOCKSTAT}" 2>/dev/null)"
+        TCP_ORPHAN_VALUE="$(awk '$1 ~ /^TCP/ {for(i=1;i<=NF;i++) if($i=="orphan") sum += $(i+1)} END {print sum+0}' "${SOCKSTAT}" 2>/dev/null)"
+        TCP_TW_VALUE="$(awk '$1 ~ /^TCP/ {for(i=1;i<=NF;i++) if($i=="tw") sum += $(i+1)} END {print sum+0}' "${SOCKSTAT}" 2>/dev/null)"
+        UDP_INUSE_VALUE="$(awk '$1 ~ /^UDP/ {for(i=1;i<=NF;i++) if($i=="inuse") sum += $(i+1)} END {print sum+0}' "${SOCKSTAT}" 2>/dev/null)"
+        TCP_INUSE=$((TCP_INUSE + ${TCP_INUSE_VALUE:-0}))
+        TCP_ORPHAN=$((TCP_ORPHAN + ${TCP_ORPHAN_VALUE:-0}))
+        TCP_TW=$((TCP_TW + ${TCP_TW_VALUE:-0}))
+        UDP_INUSE=$((UDP_INUSE + ${UDP_INUSE_VALUE:-0}))
     done
 
     CONNTRACK_COUNT="$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null)"
