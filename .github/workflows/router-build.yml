@@ -3,7 +3,7 @@ name: Build ASUS Router ARMv7 and ARM64
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, build-9a552936]
     paths:
       - 'magictier/**'
       - 'router-plugin/**'
@@ -14,7 +14,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: router-build-main
+  group: router-build-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
           esac
 
           if [ -n "${BASE_SHA}" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            if git diff --quiet "${BASE_SHA}" "${GITHUB_SHA}" -- magictier/; then
+            if [ "${GITHUB_REF_NAME}" != "build-9a552936" ] && git diff --quiet "${BASE_SHA}" "${GITHUB_SHA}" -- magictier/; then
               BUILD_CORE=false
             fi
           fi
