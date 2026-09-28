@@ -9,7 +9,6 @@ PIDFILE="/var/run/magic.pid"
 MONITOR_PIDFILE="/var/run/magic-monitor.pid"
 LOGFILE="/tmp/upload/magic_log.txt"
 INTERNAL_LOGFILE="/tmp/upload/magic_internal.log"
-CORE_HEALTH_STATE="/tmp/magic_core_health.state"
 LOG_MAX_BYTES="${magic_log_max_bytes:-131072}"
 LOG_KEEP_BYTES="65536"
 INTERNAL_LOG_MAX_BYTES="65536"
@@ -27,15 +26,9 @@ STOP_MARKER="/tmp/magic_intentional_stop"
 PERIODIC_RESTART_STATE="/tmp/magic_periodic_restart.state"
 PERIODIC_RESTART_MAX=3
 PERIODIC_RESTART_ENABLE="${magic_periodic_restart_enable:-0}"
-PERIODIC_RESTART_MODE="${magic_periodic_restart_mode:-interval}"
 PERIODIC_RESTART_HOURS="${magic_periodic_restart_hours:-24}"
-PERIODIC_RESTART_TIME="${magic_periodic_restart_time:-04:00}"
-PERIODIC_RESTART_WEEKDAY="${magic_periodic_restart_weekday:-0}"
 PERIODIC_RETRY_MINUTES="${magic_periodic_retry_minutes:-5}"
-case "${PERIODIC_RESTART_MODE}" in interval|daily|weekly) ;; *) PERIODIC_RESTART_MODE=interval ;; esac
 case "${PERIODIC_RESTART_HOURS}" in ''|*[!0-9]*|0) PERIODIC_RESTART_HOURS=24 ;; esac
-case "${PERIODIC_RESTART_TIME}" in [0-1][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;; *) PERIODIC_RESTART_TIME="04:00" ;; esac
-case "${PERIODIC_RESTART_WEEKDAY}" in 0|1|2|3|4|5|6) ;; *) PERIODIC_RESTART_WEEKDAY=0 ;; esac
 case "${PERIODIC_RETRY_MINUTES}" in ''|*[!0-9]*|0) PERIODIC_RETRY_MINUTES=5 ;; esac
 [ "${PERIODIC_RESTART_HOURS}" -le 8760 ] 2>/dev/null || PERIODIC_RESTART_HOURS=8760
 [ "${PERIODIC_RETRY_MINUTES}" -le 1440 ] 2>/dev/null || PERIODIC_RETRY_MINUTES=1440
@@ -70,15 +63,6 @@ is_running() {
     [ -f "${PIDFILE}" ] || return 1
     PID="$(cat "${PIDFILE}" 2>/dev/null)"
     pid_is_core "${PID}" && kill -0 "${PID}" 2>/dev/null
-}
-
-router_machine_id() {
-    ID="$(nvram get lan_hwaddr 2>/dev/null)"
-    [ -n "${ID}" ] || ID="$(nvram get et0macaddr 2>/dev/null)"
-    [ -n "${ID}" ] || ID="$(nvram get wl0_hwaddr 2>/dev/null)"
-    [ -n "${ID}" ] || ID="$(uname -n 2>/dev/null)"
-    [ -n "${ID}" ] || ID="unknown-router"
-    printf 'magic-router-%s\n' "${ID}"
 }
 
 get_wan_ipv4() {
@@ -152,53 +136,7 @@ stop_service() {
             kill -9 "${PID}" 2>/dev/null
         fi
     fi
-    rm -f "${PIDFILE}" "${CORE_HEALTH_STATE}"
-}
-
-periodic_weekday_name() {
-    case "$1" in
-        0) echo "周日" ;;
-        1) echo "周一" ;;
-        2) echo "周二" ;;
-        3) echo "周三" ;;
-        4) echo "周四" ;;
-        5) echo "周五" ;;
-        6) echo "周六" ;;
-        *) echo "周日" ;;
-    esac
-}
-
-periodic_next_due() {
-    NOW="$(date +%s 2>/dev/null)"
-    case "${NOW}" in ''|*[!0-9]*) NOW=0 ;; esac
-    if [ "${PERIODIC_RESTART_MODE}" = "daily" ] || [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
-        TARGET_H="${PERIODIC_RESTART_TIME%:*}"
-        TARGET_M="${PERIODIC_RESTART_TIME#*:}"
-        NOW_H="$(date +%H 2>/dev/null)"
-        NOW_M="$(date +%M 2>/dev/null)"
-        NOW_S="$(date +%S 2>/dev/null)"
-        TARGET_H="${TARGET_H#0}"; [ -n "${TARGET_H}" ] || TARGET_H=0
-        TARGET_M="${TARGET_M#0}"; [ -n "${TARGET_M}" ] || TARGET_M=0
-        NOW_H="${NOW_H#0}"; [ -n "${NOW_H}" ] || NOW_H=0
-        NOW_M="${NOW_M#0}"; [ -n "${NOW_M}" ] || NOW_M=0
-        NOW_S="${NOW_S#0}"; [ -n "${NOW_S}" ] || NOW_S=0
-        CURRENT_SECONDS=$((NOW_H * 3600 + NOW_M * 60 + NOW_S))
-        TARGET_SECONDS=$((TARGET_H * 3600 + TARGET_M * 60))
-        if [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
-            NOW_W="$(date +%w 2>/dev/null)"
-            case "${NOW_W}" in 0|1|2|3|4|5|6) ;; *) NOW_W=0 ;; esac
-            DAY_DELTA=$((PERIODIC_RESTART_WEEKDAY - NOW_W))
-            [ "${DAY_DELTA}" -ge 0 ] 2>/dev/null || DAY_DELTA=$((DAY_DELTA + 7))
-            DELTA=$((DAY_DELTA * 86400 + TARGET_SECONDS - CURRENT_SECONDS))
-            [ "${DELTA}" -gt 0 ] 2>/dev/null || DELTA=$((DELTA + 604800))
-        else
-            DELTA=$((TARGET_SECONDS - CURRENT_SECONDS))
-            [ "${DELTA}" -gt 0 ] 2>/dev/null || DELTA=$((DELTA + 86400))
-        fi
-        echo $((NOW + DELTA))
-        return 0
-    fi
-    echo $((NOW + PERIODIC_RESTART_HOURS * 3600))
+    rm -f "${PIDFILE}"
 }
 
 periodic_schedule_reset() {
@@ -206,16 +144,11 @@ periodic_schedule_reset() {
         rm -f "${PERIODIC_RESTART_STATE}"
         return 0
     fi
-    NEXT_DUE="$(periodic_next_due)"
+    NOW="$(date +%s 2>/dev/null)"
+    [ -n "${NOW}" ] || NOW=0
+    NEXT_DUE=$((NOW + PERIODIC_RESTART_HOURS * 3600))
     echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
-    if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
-        log_user "定时重启已启用：每天 ${PERIODIC_RESTART_TIME} 执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
-    elif [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
-        WEEKDAY_NAME="$(periodic_weekday_name "${PERIODIC_RESTART_WEEKDAY}")"
-        log_user "定时重启已启用：每${WEEKDAY_NAME} ${PERIODIC_RESTART_TIME} 执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
-    else
-        log_user "定时重启已启用：每 ${PERIODIC_RESTART_HOURS} 小时执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
-    fi
+    log_user "定时重启已启用：每 ${PERIODIC_RESTART_HOURS} 小时执行一次；组网失败后每 ${PERIODIC_RETRY_MINUTES} 分钟重试，最多3次。"
 }
 
 mesh_ready_since_line() {
@@ -259,16 +192,9 @@ periodic_monitor_tick() {
             ;;
         waiting)
             if mesh_ready_since_line "${START_LINE}"; then
-                NEXT_DUE="$(periodic_next_due)"
+                NEXT_DUE=$((NOW + PERIODIC_RESTART_HOURS * 3600))
                 echo "scheduled ${NEXT_DUE} 0 0" > "${PERIODIC_RESTART_STATE}" 2>/dev/null
-                if [ "${PERIODIC_RESTART_MODE}" = "daily" ]; then
-                    log_user "✓ 定时重启后组网恢复成功；下一次维护为每天 ${PERIODIC_RESTART_TIME}。"
-                elif [ "${PERIODIC_RESTART_MODE}" = "weekly" ]; then
-                    WEEKDAY_NAME="$(periodic_weekday_name "${PERIODIC_RESTART_WEEKDAY}")"
-                    log_user "✓ 定时重启后组网恢复成功；下一次维护为每${WEEKDAY_NAME} ${PERIODIC_RESTART_TIME}。"
-                else
-                    log_user "✓ 定时重启后组网恢复成功；下一次维护将在 ${PERIODIC_RESTART_HOURS} 小时后。"
-                fi
+                log_user "✓ 定时重启后组网恢复成功；下一次维护将在 ${PERIODIC_RESTART_HOURS} 小时后。"
                 return 0
             fi
             if [ "${DUE}" -gt 0 ] 2>/dev/null && [ "${NOW}" -ge "${DUE}" ] 2>/dev/null; then
@@ -443,8 +369,7 @@ start_service() {
     fi
     log_user "正在建立组网连接..."
 
-    MACHINE_ID="$(router_machine_id)"
-    set -- "${BIN}" --machine-id "${MACHINE_ID}" --console-log-level warn --file-log-level off --dev-name magic0
+    set -- "${BIN}" --console-log-level warn --file-log-level off --dev-name magic0
     [ -z "${magic_hostname}" ] || set -- "$@" --hostname "${magic_hostname}"
     [ -z "${magic_instance_name}" ] || set -- "$@" --instance-name "${magic_instance_name}"
     [ -z "${magic_network_name}" ] || set -- "$@" --network-name "${magic_network_name}"
@@ -454,8 +379,7 @@ start_service() {
     [ -z "${magic_listeners}" ] || set -- "$@" --listeners "${magic_listeners}"
     [ -z "${magic_proxy_networks}" ] || set -- "$@" --proxy-networks "${magic_proxy_networks}"
 
-    rm -f "${CORE_HEALTH_STATE}"
-    MAGICTIER_LOW_MEMORY=1 MAGICTIER_HEALTH_STATUS_FILE="${CORE_HEALTH_STATE}" MAGICTIER_USER_EVENT_LOG="${LOGFILE}" "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
+    MAGICTIER_USER_EVENT_LOG="${LOGFILE}" "$@" >> "${INTERNAL_LOGFILE}" 2>&1 &
     echo $! > "${PIDFILE}"
     sleep 2
 
@@ -501,60 +425,6 @@ periodic_status_fields() {
     fi
     printf '"periodic_enabled":1,"periodic_mode":"%s","periodic_due":%s,"periodic_remaining":%s,"periodic_attempt":%s,"periodic_max":%s' \
         "${MODE}" "${DUE}" "${REMAINING}" "${ATTEMPT}" "${PERIODIC_RESTART_MAX}"
-}
-
-health_status_fields() {
-    MEM_AVAILABLE_KB="$(awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo 2>/dev/null)"
-    [ -n "${MEM_AVAILABLE_KB}" ] || MEM_AVAILABLE_KB="$(awk '/^MemFree:/ {print $2; exit}' /proc/meminfo 2>/dev/null)"
-    SLAB_KB="$(awk '/^Slab:/ {print $2; exit}' /proc/meminfo 2>/dev/null)"
-    [ -n "${MEM_AVAILABLE_KB}" ] || MEM_AVAILABLE_KB=0
-    [ -n "${SLAB_KB}" ] || SLAB_KB=0
-
-    SOCKET_MEM_PAGES=0
-    for SOCKSTAT in /proc/net/sockstat /proc/net/sockstat6; do
-        [ -r "${SOCKSTAT}" ] || continue
-        PAGES="$(awk '{for(i=1;i<=NF;i++) if($i=="mem" && (i+1)<=NF) sum += $(i+1)} END {print sum+0}' "${SOCKSTAT}" 2>/dev/null)"
-        case "${PAGES}" in ''|*[!0-9]*) PAGES=0 ;; esac
-        SOCKET_MEM_PAGES=$((SOCKET_MEM_PAGES + PAGES))
-    done
-    PAGE_SIZE=4096
-    if command -v getconf >/dev/null 2>&1; then
-        DETECTED_PAGE_SIZE="$(getconf PAGESIZE 2>/dev/null)"
-        case "${DETECTED_PAGE_SIZE}" in ''|*[!0-9]*) ;; *) PAGE_SIZE="${DETECTED_PAGE_SIZE}" ;; esac
-    fi
-    SOCKET_MEM_KB=$((SOCKET_MEM_PAGES * PAGE_SIZE / 1024))
-
-    SOCKET_COUNT=0
-    PEER_COUNT=0
-    CONN_COUNT=0
-    RECONNECT_COUNT=0
-    if is_running; then
-        HEALTH_PID="$(cat "${PIDFILE}" 2>/dev/null)"
-        for FD in /proc/"${HEALTH_PID}"/fd/*; do
-            [ -L "${FD}" ] || continue
-            TARGET="$(readlink "${FD}" 2>/dev/null)"
-            case "${TARGET}" in socket:\[*\]) SOCKET_COUNT=$((SOCKET_COUNT + 1)) ;; esac
-        done
-
-        if [ -r "${CORE_HEALTH_STATE}" ]; then
-            CORE_HEALTH_PID=0
-            CORE_HEALTH_TS=0
-            read CORE_HEALTH_PID PEER_COUNT CONN_COUNT RECONNECT_COUNT CORE_HEALTH_TS < "${CORE_HEALTH_STATE}" 2>/dev/null
-            if [ "${CORE_HEALTH_PID}" != "${HEALTH_PID}" ]; then
-                PEER_COUNT=0
-                CONN_COUNT=0
-                RECONNECT_COUNT=0
-            fi
-        fi
-    fi
-
-    for VALUE_NAME in MEM_AVAILABLE_KB SLAB_KB SOCKET_MEM_KB SOCKET_COUNT PEER_COUNT CONN_COUNT RECONNECT_COUNT; do
-        eval 'VALUE=$'"${VALUE_NAME}"
-        case "${VALUE}" in ''|*[!0-9]*) eval "${VALUE_NAME}=0" ;; esac
-    done
-
-    printf '"mem_available_kb":%s,"slab_kb":%s,"socket_mem_kb":%s,"socket_count":%s,"peer_count":%s,"conn_count":%s,"reconnect_count":%s' \
-        "${MEM_AVAILABLE_KB}" "${SLAB_KB}" "${SOCKET_MEM_KB}" "${SOCKET_COUNT}" "${PEER_COUNT}" "${CONN_COUNT}" "${RECONNECT_COUNT}"
 }
 
 print_status() {
@@ -682,14 +552,13 @@ case "$2" in
         ;;
     6)
         PERIODIC_FIELDS="$(periodic_status_fields)"
-        HEALTH_FIELDS="$(health_status_fields)"
         if is_running; then
             PID="$(cat "${PIDFILE}")"
             RSS="$(awk '/VmRSS:/ {print $2; exit}' "/proc/${PID}/status" 2>/dev/null)"
             [ -n "${RSS}" ] || RSS=0
-            http_response "{\"state\":\"running\",\"pid\":${PID},\"rss_kb\":${RSS},${PERIODIC_FIELDS},${HEALTH_FIELDS}}"
+            http_response "{\"state\":\"running\",\"pid\":${PID},\"rss_kb\":${RSS},${PERIODIC_FIELDS}}"
         else
-            http_response "{\"state\":\"stopped\",\"pid\":0,\"rss_kb\":0,${PERIODIC_FIELDS},${HEALTH_FIELDS}}"
+            http_response "{\"state\":\"stopped\",\"pid\":0,\"rss_kb\":0,${PERIODIC_FIELDS}}"
         fi
         ;;
     *)

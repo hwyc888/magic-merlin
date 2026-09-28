@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::Context;
 use dashmap::{DashMap, DashSet};
 use parking_lot::Mutex;
 use tokio::sync::RwLock;
@@ -11,7 +12,7 @@ use crate::{
     common::{
         error::Error,
         global_ctx::{ArcGlobalCtx, GlobalCtxEvent, NetworkIdentity},
-        low_memory_mode, shrink_dashmap, PeerId,
+        shrink_dashmap, PeerId,
     },
     proto::{
         api::instance::{self, PeerConnInfo},
@@ -97,9 +98,6 @@ impl PeerMap {
                     guard.insert_many(alive_client_url, conn_ids);
                 }
             };
-            if low_memory_mode() && guard.is_empty() {
-                *guard = multimap::MultiMap::new();
-            }
             let alive_conn_count = guard.len();
             drop(guard);
             tracing::debug!(
@@ -134,13 +132,16 @@ impl PeerMap {
 
     pub async fn send_msg_directly(&self, msg: ZCPacket, dst_peer_id: PeerId) -> Result<(), Error> {
         if dst_peer_id == self.my_peer_id {
-            if let Err(err) = self.packet_send.try_send(msg) {
-                tracing::warn!(?err, "send msg to self dropped because bounded queue is unavailable");
-                return Err(Error::AnyhowError(anyhow::anyhow!(
-                    "send msg to self failed: {:?}",
-                    err
-                )));
-            }
+            let packet_send = self.packet_send.clone();
+            tokio::spawn(async move {
+                let ret = packet_send
+                    .send(msg)
+                    .await
+                    .with_context(|| "send msg to self failed");
+                if ret.is_err() {
+                    tracing::error!("send msg to self failed: {:?}", ret);
+                }
+            });
             return Ok(());
         }
 
@@ -288,20 +289,6 @@ impl PeerMap {
         ret
     }
 
-    pub fn active_resource_counts(&self) -> (usize, usize) {
-        let mut peer_count = 0usize;
-        let mut connection_count = 0usize;
-        for peer in self.peer_map.iter() {
-            let active_connections = peer.value().active_conn_count();
-            if active_connections == 0 {
-                continue;
-            }
-            peer_count = peer_count.saturating_add(1);
-            connection_count = connection_count.saturating_add(active_connections);
-        }
-        (peer_count, connection_count)
-    }
-
     pub async fn list_peer_conns(&self, peer_id: PeerId) -> Option<Vec<PeerConnInfo>> {
         if let Some(p) = self.get_peer_by_id(peer_id) {
             Some(p.list_peer_conns().await)
@@ -329,10 +316,7 @@ impl PeerMap {
 
     pub async fn close_peer(&self, peer_id: PeerId) -> Result<(), TunnelError> {
         let remove_ret = self.peer_map.remove(&peer_id);
-        shrink_dashmap(
-            &self.peer_map,
-            if low_memory_mode() { Some(0) } else { None },
-        );
+        shrink_dashmap(&self.peer_map, None);
 
         self.global_ctx
             .issue_event(GlobalCtxEvent::PeerRemoved(peer_id));

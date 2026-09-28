@@ -1176,8 +1176,6 @@ fn win_service_main(arg: Vec<std::ffi::OsString>) {
 
 async fn run_main(cli: Cli) -> anyhow::Result<()> {
     defer!(dump_profile(0););
-
-    crate::common::set_default_machine_id(cli.machine_id.clone());
     
     // 设置 verbose 输出标志
     if cli.verbose {
@@ -1294,10 +1292,6 @@ async fn run_main(cli: Cli) -> anyhow::Result<()> {
         cli.network_options
             .merge_into(&cfg)
             .with_context(|| "failed to create config from cli".to_string())?;
-        cfg.set_id(crate::common::stable_instance_id(
-            &cfg.get_network_identity().network_name,
-            &cfg.get_inst_name(),
-        ));
         if use_global_var!(VERBOSE_OUTPUT) {
             println!("Starting magictier from cli with config:");
             println!("############### TOML ###############\n");

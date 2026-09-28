@@ -2,9 +2,8 @@ use std::{
     fmt::Debug,
     future,
     io::Write as _,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
 };
-use sha2::{Digest, Sha256};
 use time::util::refresh_tz;
 use tokio::{task::JoinSet, time::timeout};
 use tracing::Instrument;
@@ -46,31 +45,6 @@ pub fn get_logger_timer_rfc3339(
 }
 
 pub type PeerId = u32;
-
-pub fn low_memory_mode() -> bool {
-    static LOW_MEMORY_MODE: OnceLock<bool> = OnceLock::new();
-    *LOW_MEMORY_MODE.get_or_init(|| {
-        let value = std::env::var("MAGICTIER_LOW_MEMORY").unwrap_or_default();
-        value == "1"
-            || value.eq_ignore_ascii_case("true")
-            || value.eq_ignore_ascii_case("yes")
-            || value.eq_ignore_ascii_case("on")
-    })
-}
-
-pub fn stable_instance_id(network_name: &str, instance_name: &str) -> uuid::Uuid {
-    let machine_id = get_machine_id();
-    let mut hasher = Sha256::new();
-    hasher.update(machine_id.as_bytes());
-    hasher.update([0u8]);
-    hasher.update(network_name.as_bytes());
-    hasher.update([0u8]);
-    hasher.update(instance_name.as_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    uuid::Uuid::from_bytes(bytes)
-}
 
 pub fn new_peer_id() -> PeerId {
     rand::random()

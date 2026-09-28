@@ -9,7 +9,7 @@ use rand::Rng as _;
 use tokio::task::JoinSet;
 
 use crate::{
-    common::{join_joinset_background, low_memory_mode, stun::StunInfoCollectorTrait, PeerId},
+    common::{join_joinset_background, stun::StunInfoCollectorTrait, PeerId},
     connector::udp_hole_punch::BackOff,
     peers::{
         peer_manager::PeerManager,
@@ -491,9 +491,6 @@ impl PeerTaskLauncher for TcpHolePunchPeerTaskLauncher {
             });
         }
 
-        if low_memory_mode() {
-            peers_to_connect.truncate(1);
-        }
         peers_to_connect
     }
 

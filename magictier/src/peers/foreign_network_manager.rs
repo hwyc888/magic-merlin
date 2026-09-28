@@ -12,7 +12,10 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        Mutex,
+    },
     task::JoinSet,
 };
 
@@ -21,7 +24,7 @@ use crate::{
         config::{ConfigLoader, TomlConfigLoader},
         error::Error,
         global_ctx::{ArcGlobalCtx, GlobalCtx, GlobalCtxEvent, NetworkIdentity},
-        join_joinset_background, low_memory_mode, shrink_dashmap,
+        join_joinset_background, shrink_dashmap,
         stats_manager::{LabelSet, LabelType, MetricName, StatsManager},
         token_bucket::TokenBucket,
         PeerId,
@@ -49,8 +52,6 @@ use super::{
     PacketRecvChan, PacketRecvChanReceiver, PUBLIC_SERVER_HOSTNAME_PREFIX,
 };
 
-const RPC_TRANSPORT_CHANNEL_CAPACITY: usize = 256;
-
 #[async_trait::async_trait]
 #[auto_impl::auto_impl(&, Box, Arc)]
 pub trait GlobalForeignNetworkAccessor: Send + Sync + 'static {
@@ -67,7 +68,7 @@ struct ForeignNetworkEntry {
     pm_packet_sender: Mutex<Option<PacketRecvChan>>,
 
     peer_rpc: Arc<PeerRpcManager>,
-    rpc_sender: mpsc::Sender<ZCPacket>,
+    rpc_sender: UnboundedSender<ZCPacket>,
 
     packet_recv: Mutex<Option<PacketRecvChanReceiver>>,
 
@@ -190,12 +191,12 @@ impl ForeignNetworkEntry {
     fn build_rpc_tspt(
         my_peer_id: PeerId,
         peer_map: Arc<PeerMap>,
-    ) -> (Arc<PeerRpcManager>, mpsc::Sender<ZCPacket>) {
+    ) -> (Arc<PeerRpcManager>, UnboundedSender<ZCPacket>) {
         struct RpcTransport {
             my_peer_id: PeerId,
             peer_map: Weak<PeerMap>,
 
-            packet_recv: Mutex<mpsc::Receiver<ZCPacket>>,
+            packet_recv: Mutex<UnboundedReceiver<ZCPacket>>,
         }
 
         #[async_trait::async_trait]
@@ -237,8 +238,7 @@ impl ForeignNetworkEntry {
             }
         }
 
-        let (rpc_transport_sender, peer_rpc_tspt_recv) =
-            mpsc::channel(if low_memory_mode() { 64 } else { RPC_TRANSPORT_CHANNEL_CAPACITY });
+        let (rpc_transport_sender, peer_rpc_tspt_recv) = mpsc::unbounded_channel();
         let tspt = RpcTransport {
             my_peer_id,
             peer_map: Arc::downgrade(&peer_map),
@@ -344,17 +344,7 @@ impl ForeignNetworkEntry {
                     {
                         rx_bytes.add(buf_len as u64);
                         rx_packets.inc();
-                        match rpc_sender.try_send(zc_packet) {
-                            Ok(()) => {}
-                            Err(mpsc::error::TrySendError::Full(_)) => {
-                                tracing::warn!(
-                                    "dropping foreign-network rpc packet because bounded transport queue is full"
-                                );
-                            }
-                            Err(mpsc::error::TrySendError::Closed(_)) => {
-                                tracing::warn!("foreign-network rpc transport queue is closed");
-                            }
-                        }
+                        rpc_sender.send(zc_packet).unwrap();
                         continue;
                     }
                     tracing::trace!(?hdr, "ignore packet in foreign network");
@@ -458,10 +448,9 @@ impl ForeignNetworkManagerData {
         {
             self.network_peer_last_update.remove(network_name);
         }
-        let shrink_threshold = if low_memory_mode() { Some(0) } else { None };
-        shrink_dashmap(&self.peer_network_map, shrink_threshold);
-        shrink_dashmap(&self.network_peer_maps, shrink_threshold);
-        shrink_dashmap(&self.network_peer_last_update, shrink_threshold);
+        shrink_dashmap(&self.peer_network_map, None);
+        shrink_dashmap(&self.network_peer_maps, None);
+        shrink_dashmap(&self.network_peer_last_update, None);
     }
 
     async fn clear_no_conn_peer(&self, network_name: &String) {

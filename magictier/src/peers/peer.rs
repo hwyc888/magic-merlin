@@ -15,7 +15,7 @@ use crate::{
     common::{
         error::Error,
         global_ctx::{ArcGlobalCtx, GlobalCtxEvent},
-        low_memory_mode, PeerId,
+        PeerId,
     },
     tunnel::packet_def::ZCPacket,
 };
@@ -31,8 +31,6 @@ const DEFAULT_CONN_REEVALUATE_SECS: u64 = 30;
 const DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000;
 const DEFAULT_CONN_MAX_LATENCY_PERCENT: u64 = 80;
 const DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD: u64 = 4 * 1024;
-const LOW_MEMORY_MAX_PEER_CONNECTIONS: usize = 3;
-const LOW_MEMORY_MAX_CONNECTIONS_PER_KIND: usize = 2;
 
 fn should_switch_default_conn(current_latency_us: u64, candidate_latency_us: u64) -> bool {
     if current_latency_us == 0
@@ -100,10 +98,7 @@ impl Peer {
                                 global_ctx_copy.issue_event(GlobalCtxEvent::PeerConnRemoved(
                                     conn.get_conn_info(),
                                 ));
-                                shrink_dashmap(
-                                    &conns_copy,
-                                    if low_memory_mode() { Some(0) } else { Some(4) },
-                                );
+                                shrink_dashmap(&conns_copy, Some(4));
                             }
                         }
 
@@ -209,33 +204,6 @@ impl Peer {
     }
 
     pub async fn add_peer_conn(&self, mut conn: PeerConn) {
-        if low_memory_mode() {
-            let incoming_kind = conn.is_hole_punched();
-            let mut active_total = 0usize;
-            let mut same_kind = 0usize;
-            for current in self.conns.iter() {
-                if current.value().get_close_notifier().is_closed() {
-                    continue;
-                }
-                active_total += 1;
-                if current.value().is_hole_punched() == incoming_kind {
-                    same_kind += 1;
-                }
-            }
-            if active_total >= LOW_MEMORY_MAX_PEER_CONNECTIONS
-                || same_kind >= LOW_MEMORY_MAX_CONNECTIONS_PER_KIND
-            {
-                tracing::info!(
-                    ?self.peer_node_id,
-                    active_total,
-                    same_kind,
-                    incoming_kind,
-                    "drop extra peer connection in low-memory mode"
-                );
-                return;
-            }
-        }
-
         let close_notifier = conn.get_close_notifier();
         let conn_info = conn.get_conn_info();
 
@@ -343,13 +311,6 @@ impl Peer {
 
     pub fn get_default_conn_id(&self) -> PeerConnId {
         self.default_conn_id.load()
-    }
-
-    pub fn active_conn_count(&self) -> usize {
-        self.conns
-            .iter()
-            .filter(|entry| !entry.value().get_close_notifier().is_closed())
-            .count()
     }
 }
 

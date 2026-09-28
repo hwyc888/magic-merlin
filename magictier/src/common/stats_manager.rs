@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
 
-use crate::common::{low_memory_mode, scoped_task::ScopedTask};
+use crate::common::scoped_task::ScopedTask;
 
 /// Predefined metric names for type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -511,14 +511,11 @@ impl StatsManager {
         // Start cleanup task only if we're in a tokio runtime
         let counters_clone = Arc::downgrade(&counters);
         let cleanup_task = tokio::spawn(async move {
-            let low_memory = low_memory_mode();
-            let cleanup_interval = if low_memory { 30 } else { 60 };
-            let stale_after = if low_memory { 60 } else { 180 };
-            let mut interval = interval(Duration::from_secs(cleanup_interval));
+            let mut interval = interval(Duration::from_secs(60)); // Check every minute
             loop {
                 interval.tick().await;
 
-                let Some(cutoff_time) = Instant::now().checked_sub(Duration::from_secs(stale_after)) else {
+                let Some(cutoff_time) = Instant::now().checked_sub(Duration::from_secs(180)) else {
                     continue;
                 };
 

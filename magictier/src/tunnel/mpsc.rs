@@ -42,8 +42,7 @@ pub struct MpscTunnel<T> {
 
 impl<T: Tunnel> MpscTunnel<T> {
     pub fn new(tunnel: T, send_timeout: Option<Duration>) -> Self {
-        let capacity = if crate::common::low_memory_mode() { 16 } else { 32 };
-        let (tx, mut rx) = channel(capacity);
+        let (tx, mut rx) = channel(32);
         let (stream, mut sink) = tunnel.split();
 
         let task = tokio::spawn(async move {

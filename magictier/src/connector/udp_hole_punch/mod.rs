@@ -13,7 +13,7 @@ use sym_to_cone::{PunchSymToConeHoleClient, PunchSymToConeHoleServer};
 use tokio::{sync::Mutex, task::JoinHandle};
 
 use crate::{
-    common::{low_memory_mode, stun::StunInfoCollectorTrait, PeerId},
+    common::{stun::StunInfoCollectorTrait, PeerId},
     peers::{
         peer_manager::PeerManager,
         peer_task::{PeerTaskLauncher, PeerTaskManager},
@@ -484,9 +484,6 @@ impl PeerTaskLauncher for UdpHolePunchPeerTaskLauncher {
             });
         }
 
-        if low_memory_mode() {
-            peers_to_connect.truncate(1);
-        }
         peers_to_connect
     }
 
