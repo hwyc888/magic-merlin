@@ -1367,22 +1367,17 @@ impl PeerManager {
             loop {
                 let (peer_count, connection_count) = peer_map.active_resource_counts();
 
-                let reconnect_stats = crate::connector::manual::reconnect_stats();
+                let reconnect_count = crate::connector::manual::reconnect_attempt_count();
                 let timestamp = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .map(|duration| duration.as_secs())
                     .unwrap_or(0);
                 let body = format!(
-                    "{} {} {} {} {} {} {} {} {} {}\n",
+                    "{} {} {} {} {}\n",
                     pid,
                     peer_count,
                     connection_count,
-                    reconnect_stats.total_attempts,
-                    reconnect_stats.recent_attempts,
-                    reconnect_stats.consecutive_failures,
-                    reconnect_stats.in_flight,
-                    reconnect_stats.last_result,
-                    reconnect_stats.last_event_ts,
+                    reconnect_count,
                     timestamp
                 );
                 let tmp_path = format!("{}.tmp", path);

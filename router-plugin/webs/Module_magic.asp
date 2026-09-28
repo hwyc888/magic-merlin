@@ -136,15 +136,6 @@ function update_periodic_status(){
         el.innerHTML="已启用，正在初始化重启倒计时";
     }
 }
-function format_epoch_time(epochSeconds){
-    var value=parseInt(epochSeconds,10)||0;
-    if(!value)return "无";
-    var d=new Date(value*1000);
-    var hh=("0"+d.getHours()).slice(-2);
-    var mm=("0"+d.getMinutes()).slice(-2);
-    var ss=("0"+d.getSeconds()).slice(-2);
-    return hh+":"+mm+":"+ss;
-}
 function refresh_status(){
     api("magic_config.sh",[6],{},function(xhr){
         var t=xhr.responseText||"";
@@ -158,18 +149,7 @@ function refresh_status(){
         if(h){
             var rssKb=m?parseInt(m[3],10)||0:0;
             E("memory_health").innerHTML="核心 "+format_memory(rssKb)+"　系统可用 "+format_memory(h[1])+"　Slab "+format_memory(h[2])+"　Socket内存 "+format_memory(h[3]);
-            var r=t.match(/\"reconnect_recent_10m\"\s*:\s*(\d+)[^}]*\"reconnect_consecutive_failures\"\s*:\s*(\d+)[^}]*\"reconnect_in_flight\"\s*:\s*(\d+)[^}]*\"reconnect_last_result\"\s*:\s*(\d+)[^}]*\"reconnect_last_ts\"\s*:\s*(\d+)/);
-            if(r){
-                var recent=parseInt(r[1],10)||0;
-                var consecutive=parseInt(r[2],10)||0;
-                var inFlight=parseInt(r[3],10)||0;
-                var lastResult=parseInt(r[4],10)||0;
-                var lastResultText=lastResult==1?"成功":(lastResult==2?"失败":"无");
-                var stability=inFlight>0?"正在重连":(consecutive>0?"最近重连失败":(recent>=4?"近期重连较多":"稳定"));
-                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　固定Peer状态 "+stability+"　固定Peer重连累计 "+h[7]+" 次　近10分钟 "+recent+" 次　连续失败 "+consecutive+" 次　最近结果 "+lastResultText+" "+format_epoch_time(r[5]);
-            }else{
-                E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　固定Peer重连累计 "+h[7]+" 次";
-            }
+            E("network_health").innerHTML="Peer "+h[5]+"　连接 "+h[6]+"　核心Socket "+h[4]+"　本次运行自动重连 "+h[7]+" 次";
         }
         var p=t.match(/\"periodic_enabled\"\s*:\s*(\d+)[^}]*\"periodic_mode\"\s*:\s*\"([^\"]+)\"[^}]*\"periodic_due\"\s*:\s*(\d+)[^}]*\"periodic_remaining\"\s*:\s*(\d+)[^}]*\"periodic_attempt\"\s*:\s*(\d+)[^}]*\"periodic_max\"\s*:\s*(\d+)/);
         if(p){
@@ -359,7 +339,7 @@ function reload_Soft_Center(){
 <tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看组网日志" /></td></tr></table>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
 <tr><th>配置管理</th><td><input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" />&nbsp;<input class="button_gen" type="button" onclick="show_config();" value="查看配置" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出文本" /></td></tr>
-<tr><th>启用 MagicTier</th><td><input id="magic_enable" type="checkbox" /> 启用后随路由器开机自动运行</td></tr>
+<tr><th>启用 MagicTier</th><td><input id="magic_enable" type="checkbox" /></td></tr>
 <tr><th>定时重启服务</th><td><input id="magic_periodic_restart_enable" type="checkbox" /> 启用后按计划重启 MagicTier 核心（会短暂中断当前组网/RDP）</td></tr>
 <tr><th>重启方式</th><td><select id="magic_periodic_restart_mode" class="input_option" onchange="update_periodic_mode_fields();"><option value="interval">每隔一段时间</option><option value="daily">每天固定时间</option><option value="weekly">每周固定时间</option></select></td></tr>
 <tr id="periodic_interval_row"><th>重启周期</th><td><input id="magic_periodic_restart_hours" class="input_ss_table" type="number" min="1" max="8760" style="width:90px" value="24" /> 小时</td></tr>

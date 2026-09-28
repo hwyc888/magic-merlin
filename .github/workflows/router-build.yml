@@ -29,14 +29,52 @@ jobs:
 
       - name: Decide whether core rebuild is required
         id: core
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Router packages must never reuse a core built before newer magictier/
-          # commits. Always rebuild both router architectures so the package and
-          # source tree cannot drift apart after cancelled/concurrent workflows.
-          echo "build_core=true" >> "${GITHUB_OUTPUT}"
-          echo "artifact_id=" >> "${GITHUB_OUTPUT}"
-          echo "Core source: rebuild current GITHUB_SHA."
+
+          BUILD_CORE=true
+          BASE_SHA="${{ github.event.before }}"
+          case "${BASE_SHA}" in
+            ''|0000000000000000000000000000000000000000)
+              BASE_SHA="$(git rev-parse HEAD^ 2>/dev/null || true)"
+              ;;
+          esac
+
+          if [ -n "${BASE_SHA}" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            if git diff --quiet "${BASE_SHA}" "${GITHUB_SHA}" -- magictier/; then
+              BUILD_CORE=false
+            fi
+          fi
+
+          ARTIFACT_ID=""
+          if [ "${BUILD_CORE}" = "false" ]; then
+            RUNS_JSON="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/router-build.yml/runs?branch=main&status=success&per_page=20")"
+            PREV_RUN_ID="$(printf '%s' "${RUNS_JSON}" | python3 -c 'import json,sys; data=json.load(sys.stdin); current=int(sys.argv[1]); print(next((str(r["id"]) for r in data.get("workflow_runs",[]) if int(r["id"]) != current), ""))' "${GITHUB_RUN_ID}")"
+            if [ -n "${PREV_RUN_ID}" ]; then
+              ARTIFACTS_JSON="$(curl -fsSL \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${PREV_RUN_ID}/artifacts?per_page=100")"
+              ARTIFACT_ID="$(printf '%s' "${ARTIFACTS_JSON}" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next((str(a["id"]) for a in data.get("artifacts",[]) if a.get("name")=="magic-merlin-asus-router" and not a.get("expired")), ""))')"
+            fi
+            if [ -z "${ARTIFACT_ID}" ]; then
+              echo "No reusable core artifact found; falling back to a core rebuild."
+              BUILD_CORE=true
+            fi
+          fi
+
+          echo "build_core=${BUILD_CORE}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_id=${ARTIFACT_ID}" >> "${GITHUB_OUTPUT}"
+          if [ "${BUILD_CORE}" = "true" ]; then
+            echo "Core source: rebuild (magictier/ changed or no reusable artifact)."
+          else
+            echo "Core source: reuse artifact ${ARTIFACT_ID}; magictier/ is unchanged."
+          fi
 
       - name: Install build tools
         if: steps.core.outputs.build_core == 'true'
@@ -166,12 +204,6 @@ jobs:
           grep -q 'RPC_TRANSPORT_CHANNEL_CAPACITY: usize = 256' magictier/src/peers/foreign_network_manager.rs
           ! grep -q 'mpsc::unbounded_channel()' magictier/src/peers/foreign_network_manager.rs
           grep -q 'MANUAL_RECONNECT_ATTEMPTS.fetch_add' magictier/src/connector/manual.rs
-          grep -q 'RECONNECT_RECENT_WINDOW_SECS: u64 = 600' magictier/src/connector/manual.rs
-          grep -q 'reconnect_stats()' magictier/src/connector/manual.rs
-          ! grep -q 'reconnect_backoff' magictier/src/connector/manual.rs
-          ! grep -q 'active connection limit' magictier/src/peers/peer.rs
-          ! grep -q 'active connection limit' magictier/src/peers/peer_manager.rs
-          ! grep -q 'active connection limit' magictier/src/peers/foreign_network_manager.rs
           grep -q 'MAGICTIER_LOW_MEMORY=1' router-plugin/scripts/magic_config.sh
           grep -q -- '--machine-id' router-plugin/scripts/magic_config.sh
           grep -q 'stable_peer_id' magictier/src/peers/peer_manager.rs
@@ -179,28 +211,13 @@ jobs:
           grep -q 'LOW_MEMORY_MAX_UDP_SOCKET_ARRAY: usize = 12' magictier/src/connector/udp_hole_punch/common.rs
           grep -q 'peers_to_connect.truncate(1)' magictier/src/connector/udp_hole_punch/mod.rs
           grep -q 'stale_after = if low_memory { 60 } else { 180 }' magictier/src/common/stats_manager.rs
-          grep -q 'nat_queue_capacity = if low_memory_mode() { 64 } else { 128 }' magictier/src/gateway/udp_proxy.rs
-          grep -q 'proxy_queue_capacity = if low_memory_mode() { 256 } else { 1024 }' magictier/src/gateway/udp_proxy.rs
-          grep -q 'idle_timeout_secs = if low_memory_mode() { 90 } else { 180 }' magictier/src/gateway/udp_proxy.rs
-          grep -q 'queue_capacity = if low_memory_mode() { 64 } else { 512 }' magictier/src/gateway/icmp_proxy.rs
-          ! grep -q 'mpsc::unbounded_channel()' magictier/src/gateway/icmp_proxy.rs
-          grep -q 'channel(close_event_capacity)' magictier/src/tunnel/udp.rs
           grep -q 'MAGICTIER_HEALTH_STATUS_FILE' router-plugin/scripts/magic_config.sh
           grep -q 'health_status_fields' router-plugin/scripts/magic_config.sh
           grep -q 'id="memory_health"' router-plugin/webs/Module_magic.asp
           grep -q 'id="network_health"' router-plugin/webs/Module_magic.asp
-          grep -q 'reconnect_recent_10m' router-plugin/scripts/magic_config.sh
-          grep -q 'reconnect_consecutive_failures' router-plugin/scripts/magic_config.sh
-          grep -q 'reconnect_recent_10m' router-plugin/scripts/magic_health.sh
-          grep -q 'format_epoch_time' router-plugin/webs/Module_magic.asp
           grep -q 'socket_mem_kb' router-plugin/scripts/magic_health.sh
-          grep -q 'sunreclaim_kb' router-plugin/scripts/magic_health.sh
-          grep -q 'conntrack_count' router-plugin/scripts/magic_health.sh
-          grep -q 'kmalloc_65536_kb' router-plugin/scripts/magic_health.sh
-          sh -n router-plugin/scripts/magic_config.sh
-          sh -n router-plugin/scripts/magic_health.sh
-          test "$(cat router-plugin/version)" = "1.3.1"
-          grep -q '"version": "1.3.1"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.2.7"
+          grep -q '"version": "1.2.7"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
           grep -q 'window.top.location.replace(target)' router-plugin/webs/Module_magic.asp
           grep -q 'onunload="unloadPage();"' router-plugin/webs/Module_magic.asp
@@ -224,9 +241,6 @@ jobs:
           grep -q '/res/icon-magic.png' router-plugin/webs/Module_magic.asp
           grep -q 'RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_HARD_LIMIT_KB="${magic_rss_hard_limit_kb:-98304}"' router-plugin/scripts/magic_config.sh
-          grep -q 'RSS_AUTORESTART_ENABLE="${magic_rss_restart_enable:-0}"' router-plugin/scripts/magic_config.sh
-          grep -q '稳定模式仅告警，不重启核心' router-plugin/scripts/magic_config.sh
-          grep -q 'magic_rss_restart_enable="0"' router-plugin/install.sh
           grep -q 'RSS_OVER_LIMIT_MAX=3' router-plugin/scripts/magic_config.sh
           grep -q 'sleep 20' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_RESTART_MAX=3' router-plugin/scripts/magic_config.sh
@@ -248,16 +262,9 @@ jobs:
           grep -q 'is_init_invocation' router-plugin/scripts/magic_config.sh
           grep -q '/koolshare/init.d/S97magic.sh' router-plugin/install.sh
           grep -q '/koolshare/init.d/N97magic.sh' router-plugin/install.sh
-          grep -q '/koolshare/init.d/V97magic.sh' router-plugin/install.sh
-          grep -q '/koolshare/init.d/V97magic.sh' router-plugin/uninstall.sh
-          grep -q 'start_nat)' router-plugin/scripts/magic_config.sh
-          grep -q 'schedule_start_retry' router-plugin/scripts/magic_config.sh
-          grep -q '保留启用状态' router-plugin/scripts/magic_config.sh
-          ! grep -q 'MagicTier启动失败，已停止自动运行' router-plugin/scripts/magic_config.sh
-          grep -q '开机自动运行' router-plugin/webs/Module_magic.asp
           grep -q '不会重启路由器' router-plugin/scripts/magic_config.sh
           ! grep -qi 'reboot' router-plugin/scripts/magic_config.sh
-          ! grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
+          grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
           grep -q 'magic_periodic_restart_enable' router-plugin/install.sh
           grep -q 'magic_periodic_restart_mode' router-plugin/install.sh
           grep -q 'magic_periodic_restart_time' router-plugin/install.sh

@@ -68,7 +68,7 @@ namespace_conflict_test() {
        [ -e /koolshare/bin/magic-core ] || [ -e /koolshare/scripts/magic_config.sh ] || \
        [ -e /koolshare/scripts/magic_health.sh ] || [ -e /koolshare/scripts/uninstall_magic.sh ] || \
        [ -e /koolshare/webs/Module_magic.asp ] || [ -e /koolshare/res/icon-magic.png ] || \
-       [ -e /koolshare/init.d/S97magic.sh ] || [ -e /koolshare/init.d/N97magic.sh ] || [ -e /koolshare/init.d/V97magic.sh ]; then
+       [ -e /koolshare/init.d/S97magic.sh ] || [ -e /koolshare/init.d/N97magic.sh ]; then
         echo_date "检测到 magic 插件命名空间已被占用，但没有本插件所有权标记。"
         echo_date "为避免覆盖其他插件，本次安装已取消。"
         exit 1
@@ -147,7 +147,6 @@ install_now() {
     chmod 0755 /koolshare/scripts/magic_config.sh /koolshare/scripts/magic_health.sh /koolshare/scripts/uninstall_magic.sh
     ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/S97magic.sh
     ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/N97magic.sh
-    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/V97magic.sh
 
     if [ "${IS_UPGRADE}" = "1" ]; then
         dbus set magic_enable="${OLD_ENABLE}"
@@ -174,9 +173,9 @@ install_now() {
         dbus set magic_log_max_bytes="131072"
     fi
     RSS_LIMIT_CURRENT="$(dbus get magic_rss_limit_kb 2>/dev/null)"
-    [ -n "${RSS_LIMIT_CURRENT}" ] || dbus set magic_rss_limit_kb="65536"
-    RSS_RESTART_ENABLE_CURRENT="$(dbus get magic_rss_restart_enable 2>/dev/null)"
-    [ -n "${RSS_RESTART_ENABLE_CURRENT}" ] || dbus set magic_rss_restart_enable="0"
+    if [ -z "${RSS_LIMIT_CURRENT}" ] || [ "${RSS_LIMIT_CURRENT}" = "262144" ]; then
+        dbus set magic_rss_limit_kb="65536"
+    fi
     PERIODIC_RESTART_ENABLE_CURRENT="$(dbus get magic_periodic_restart_enable 2>/dev/null)"
     [ -n "${PERIODIC_RESTART_ENABLE_CURRENT}" ] || dbus set magic_periodic_restart_enable="0"
     PERIODIC_RESTART_MODE_CURRENT="$(dbus get magic_periodic_restart_mode 2>/dev/null)"

@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeSet,
     sync::{
-        atomic::{AtomicU32, AtomicU64, Ordering},
+        atomic::{AtomicU32, Ordering},
         Arc, Weak,
     },
 };
@@ -38,82 +38,9 @@ use super::create_connector_by_url;
 type ConnectorMap = Arc<DashSet<url::Url>>;
 
 static MANUAL_RECONNECT_ATTEMPTS: AtomicU32 = AtomicU32::new(0);
-static MANUAL_RECONNECT_RECENT_ATTEMPTS: AtomicU32 = AtomicU32::new(0);
-static MANUAL_RECONNECT_RECENT_WINDOW_START: AtomicU64 = AtomicU64::new(0);
-static MANUAL_RECONNECT_CONSECUTIVE_FAILURES: AtomicU32 = AtomicU32::new(0);
-static MANUAL_RECONNECT_IN_FLIGHT: AtomicU32 = AtomicU32::new(0);
-static MANUAL_RECONNECT_LAST_RESULT: AtomicU32 = AtomicU32::new(0);
-static MANUAL_RECONNECT_LAST_EVENT_TS: AtomicU64 = AtomicU64::new(0);
 
-const RECONNECT_RECENT_WINDOW_SECS: u64 = 600;
-
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct ReconnectStats {
-    pub total_attempts: u32,
-    pub recent_attempts: u32,
-    pub consecutive_failures: u32,
-    pub in_flight: u32,
-    pub last_result: u32,
-    pub last_event_ts: u64,
-}
-
-fn now_epoch_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
-}
-
-fn record_reconnect_attempt() {
-    MANUAL_RECONNECT_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
-    MANUAL_RECONNECT_IN_FLIGHT.fetch_add(1, Ordering::Relaxed);
-
-    let now = now_epoch_secs();
-    MANUAL_RECONNECT_LAST_EVENT_TS.store(now, Ordering::Relaxed);
-
-    let window_start = MANUAL_RECONNECT_RECENT_WINDOW_START.load(Ordering::Relaxed);
-    if window_start == 0 || now.saturating_sub(window_start) >= RECONNECT_RECENT_WINDOW_SECS {
-        if MANUAL_RECONNECT_RECENT_WINDOW_START
-            .compare_exchange(window_start, now, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-        {
-            MANUAL_RECONNECT_RECENT_ATTEMPTS.store(1, Ordering::Relaxed);
-            return;
-        }
-    }
-    MANUAL_RECONNECT_RECENT_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
-}
-
-fn record_reconnect_result(success: bool) {
-    MANUAL_RECONNECT_IN_FLIGHT.fetch_sub(1, Ordering::Relaxed);
-    MANUAL_RECONNECT_LAST_EVENT_TS.store(now_epoch_secs(), Ordering::Relaxed);
-    if success {
-        MANUAL_RECONNECT_CONSECUTIVE_FAILURES.store(0, Ordering::Relaxed);
-        MANUAL_RECONNECT_LAST_RESULT.store(1, Ordering::Relaxed);
-    } else {
-        MANUAL_RECONNECT_CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed);
-        MANUAL_RECONNECT_LAST_RESULT.store(2, Ordering::Relaxed);
-    }
-}
-
-pub(crate) fn reconnect_stats() -> ReconnectStats {
-    let now = now_epoch_secs();
-    let window_start = MANUAL_RECONNECT_RECENT_WINDOW_START.load(Ordering::Relaxed);
-    let recent_attempts =
-        if window_start == 0 || now.saturating_sub(window_start) >= RECONNECT_RECENT_WINDOW_SECS {
-            0
-        } else {
-            MANUAL_RECONNECT_RECENT_ATTEMPTS.load(Ordering::Relaxed)
-        };
-
-    ReconnectStats {
-        total_attempts: MANUAL_RECONNECT_ATTEMPTS.load(Ordering::Relaxed),
-        recent_attempts,
-        consecutive_failures: MANUAL_RECONNECT_CONSECUTIVE_FAILURES.load(Ordering::Relaxed),
-        in_flight: MANUAL_RECONNECT_IN_FLIGHT.load(Ordering::Relaxed),
-        last_result: MANUAL_RECONNECT_LAST_RESULT.load(Ordering::Relaxed),
-        last_event_ts: MANUAL_RECONNECT_LAST_EVENT_TS.load(Ordering::Relaxed),
-    }
+pub(crate) fn reconnect_attempt_count() -> u32 {
+    MANUAL_RECONNECT_ATTEMPTS.load(Ordering::Relaxed)
 }
 
 #[derive(Debug, Clone)]
@@ -352,16 +279,7 @@ impl ManualConnectorManager {
         data: Arc<ConnectorManagerData>,
         dead_url: url::Url,
     ) -> Result<ReconnResult, Error> {
-        record_reconnect_attempt();
-        let ret = Self::conn_reconnect_inner(data, dead_url).await;
-        record_reconnect_result(ret.is_ok());
-        ret
-    }
-
-    async fn conn_reconnect_inner(
-        data: Arc<ConnectorManagerData>,
-        dead_url: url::Url,
-    ) -> Result<ReconnResult, Error> {
+        MANUAL_RECONNECT_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
         tracing::info!("reconnect: {}", dead_url);
 
         let mut ip_versions = vec![];

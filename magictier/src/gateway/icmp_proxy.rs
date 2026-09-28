@@ -15,17 +15,14 @@ use pnet::packet::{
 };
 use socket2::Socket;
 use tokio::{
-    sync::{
-        mpsc::{error::TrySendError, Receiver, Sender},
-        Mutex,
-    },
+    sync::{mpsc::UnboundedSender, Mutex},
     task::JoinSet,
 };
 
 use tracing::Instrument;
 
 use crate::{
-    common::{error::Error, global_ctx::ArcGlobalCtx, low_memory_mode, PeerId},
+    common::{error::Error, global_ctx::ArcGlobalCtx, PeerId},
     gateway::ip_reassembler::ComposeIpv4PacketArgs,
     peers::{peer_manager::PeerManager, PeerPacketFilter},
     tunnel::packet_def::{PacketType, ZCPacket},
@@ -70,8 +67,8 @@ impl IcmpNatEntry {
 }
 
 type IcmpNatTable = Arc<dashmap::DashMap<IcmpNatKey, IcmpNatEntry>>;
-type NewPacketSender = Sender<IcmpNatKey>;
-type NewPacketReceiver = Receiver<IcmpNatKey>;
+type NewPacketSender = tokio::sync::mpsc::UnboundedSender<IcmpNatKey>;
+type NewPacketReceiver = tokio::sync::mpsc::UnboundedReceiver<IcmpNatKey>;
 
 #[derive(Debug)]
 pub struct IcmpProxy {
@@ -86,7 +83,7 @@ pub struct IcmpProxy {
     tasks: Mutex<JoinSet<()>>,
 
     ip_resemmbler: Arc<IpReassembler>,
-    icmp_sender: Arc<std::sync::Mutex<Option<Sender<ZCPacket>>>>,
+    icmp_sender: Arc<std::sync::Mutex<Option<UnboundedSender<ZCPacket>>>>,
 }
 
 fn socket_recv(
@@ -104,7 +101,7 @@ fn socket_recv(
 fn socket_recv_loop(
     socket: Arc<Socket>,
     nat_table: IcmpNatTable,
-    sender: Sender<ZCPacket>,
+    sender: UnboundedSender<ZCPacket>,
 ) {
     let mut buf = [0u8; 8192];
     let data: &mut [MaybeUninit<u8>] = unsafe { std::mem::transmute(&mut buf[..]) };
@@ -176,14 +173,8 @@ fn socket_recv_loop(
                 p.fill_peer_manager_hdr(v.my_peer_id, v.src_peer_id, PacketType::Data as u8);
                 p.mut_peer_manager_header().unwrap().set_no_proxy(true);
 
-                match sender.try_send(p) {
-                    Ok(()) => {}
-                    Err(TrySendError::Full(_)) => {
-                        tracing::debug!("icmp response queue full, drop packet");
-                    }
-                    Err(TrySendError::Closed(_)) => {
-                        tracing::error!("icmp response queue closed");
-                    }
+                if let Err(e) = sender.send(p) {
+                    tracing::error!("send icmp packet to peer failed: {:?}, may exiting..", e);
                 }
                 Ok(())
             },
@@ -273,8 +264,7 @@ impl IcmpProxy {
     }
 
     async fn start_icmp_proxy(self: &Arc<Self>) -> Result<(), Error> {
-        let queue_capacity = if low_memory_mode() { 64 } else { 512 };
-        let (sender, mut receiver) = tokio::sync::mpsc::channel(queue_capacity);
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         self.icmp_sender.lock().unwrap().replace(sender.clone());
         if let Some(socket) = self.socket.lock().unwrap().as_ref() {
             let socket = socket.clone();
@@ -376,7 +366,7 @@ impl IcmpProxy {
                     .unwrap()
                     .as_ref()
                     .unwrap()
-                    .try_send(packet);
+                    .send(packet);
                 Ok(())
             },
         );

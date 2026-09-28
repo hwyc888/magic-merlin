@@ -16,7 +16,6 @@ INTERNAL_LOG_MAX_BYTES="65536"
 INTERNAL_LOG_KEEP_BYTES="32768"
 RSS_LIMIT_KB="${magic_rss_limit_kb:-65536}"
 RSS_HARD_LIMIT_KB="${magic_rss_hard_limit_kb:-98304}"
-RSS_AUTORESTART_ENABLE="${magic_rss_restart_enable:-0}"
 RSS_OVER_LIMIT_MAX=3
 RSS_RESTART_STATE="/tmp/magic_rss_restart.state"
 RSS_RESTART_WINDOW=600
@@ -25,7 +24,6 @@ CRASH_RESTART_STATE="/tmp/magic_crash_restart.state"
 CRASH_RESTART_WINDOW=600
 CRASH_RESTART_MAX=3
 STOP_MARKER="/tmp/magic_intentional_stop"
-START_RETRY_PIDFILE="/var/run/magic-start-retry.pid"
 PERIODIC_RESTART_STATE="/tmp/magic_periodic_restart.state"
 PERIODIC_RESTART_MAX=3
 PERIODIC_RESTART_ENABLE="${magic_periodic_restart_enable:-0}"
@@ -103,43 +101,9 @@ get_wan_ipv4() {
 
 is_init_invocation() {
     case "$0" in
-        /koolshare/init.d/S97magic.sh|/koolshare/init.d/N97magic.sh|/koolshare/init.d/V97magic.sh) return 0 ;;
+        /koolshare/init.d/S97magic.sh|/koolshare/init.d/N97magic.sh) return 0 ;;
         *) return 1 ;;
     esac
-}
-
-ensure_init_links() {
-    [ -x /koolshare/scripts/magic_config.sh ] || return 0
-    mkdir -p /koolshare/init.d
-    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/S97magic.sh
-    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/N97magic.sh
-    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/V97magic.sh
-}
-
-schedule_start_retry() {
-    [ "$(dbus get magic_enable 2>/dev/null)" = "1" ] || return 0
-    if [ -f "${START_RETRY_PIDFILE}" ]; then
-        RETRY_PID="$(cat "${START_RETRY_PIDFILE}" 2>/dev/null)"
-        if [ -n "${RETRY_PID}" ] && kill -0 "${RETRY_PID}" 2>/dev/null; then
-            return 0
-        fi
-        rm -f "${START_RETRY_PIDFILE}"
-    fi
-
-    (
-        RETRY_COUNT=0
-        while [ "${RETRY_COUNT}" -lt 12 ]; do
-            sleep 10
-            [ "$(dbus get magic_enable 2>/dev/null)" = "1" ] || break
-            sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1
-            if is_running; then
-                break
-            fi
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-        done
-        rm -f "${START_RETRY_PIDFILE}"
-    ) >/dev/null 2>&1 &
-    echo $! > "${START_RETRY_PIDFILE}"
 }
 
 trim_one_log() {
@@ -407,50 +371,41 @@ start_monitor() {
             fi
 
             if [ "${RSS_TRIGGER}" = "1" ]; then
-                if [ "${RSS_AUTORESTART_ENABLE}" != "1" ]; then
-                    if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
-                        log_user "⚠ MagicTier RSS ${RSS}KB 超过硬限制 ${RSS_HARD_LIMIT_KB}KB；稳定模式仅告警，不重启核心。"
-                    else
-                        log_user "⚠ MagicTier RSS 已连续 ${RSS_OVER_LIMIT_COUNT} 次超过 ${RSS_LIMIT_KB}KB；稳定模式仅告警，不重启核心。"
-                    fi
-                    RSS_OVER_LIMIT_COUNT=0
-                else
-                    NOW="$(date +%s 2>/dev/null)"
-                    [ -n "${NOW}" ] || NOW=0
-                    WINDOW_START=0
-                    RESTART_COUNT=0
-                    if [ -f "${RSS_RESTART_STATE}" ]; then
-                        read WINDOW_START RESTART_COUNT < "${RSS_RESTART_STATE}" 2>/dev/null
-                    fi
-                    [ -n "${WINDOW_START}" ] || WINDOW_START=0
-                    [ -n "${RESTART_COUNT}" ] || RESTART_COUNT=0
-                    if [ "${NOW}" -eq 0 ] || [ $((NOW - WINDOW_START)) -gt "${RSS_RESTART_WINDOW}" ] 2>/dev/null; then
-                        WINDOW_START="${NOW}"
-                        RESTART_COUNT=0
-                    fi
-                    RESTART_COUNT=$((RESTART_COUNT + 1))
-                    echo "${WINDOW_START} ${RESTART_COUNT}" > "${RSS_RESTART_STATE}" 2>/dev/null
-
-                    if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
-                        log_user "⚠ 内存保护触发：MagicTier RSS ${RSS}KB 超过硬限制 ${RSS_HARD_LIMIT_KB}KB。"
-                    else
-                        log_user "⚠ 内存保护触发：MagicTier RSS 已连续 ${RSS_OVER_LIMIT_COUNT} 次超过 ${RSS_LIMIT_KB}KB。"
-                    fi
-                    kill "${PID}" 2>/dev/null
-                    sleep 2
-                    pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
-                    rm -f "${PIDFILE}"
-
-                    if [ "${RESTART_COUNT}" -le "${RSS_RESTART_MAX}" ] 2>/dev/null; then
-                        log_user "正在自动重启 MagicTier 核心程序，不会重启路由器。"
-                        rm -f "${MONITOR_PIDFILE}"
-                        ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
-                    else
-                        log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
-                        dbus set magic_enable="0"
-                    fi
-                    exit 0
+                NOW="$(date +%s 2>/dev/null)"
+                [ -n "${NOW}" ] || NOW=0
+                WINDOW_START=0
+                RESTART_COUNT=0
+                if [ -f "${RSS_RESTART_STATE}" ]; then
+                    read WINDOW_START RESTART_COUNT < "${RSS_RESTART_STATE}" 2>/dev/null
                 fi
+                [ -n "${WINDOW_START}" ] || WINDOW_START=0
+                [ -n "${RESTART_COUNT}" ] || RESTART_COUNT=0
+                if [ "${NOW}" -eq 0 ] || [ $((NOW - WINDOW_START)) -gt "${RSS_RESTART_WINDOW}" ] 2>/dev/null; then
+                    WINDOW_START="${NOW}"
+                    RESTART_COUNT=0
+                fi
+                RESTART_COUNT=$((RESTART_COUNT + 1))
+                echo "${WINDOW_START} ${RESTART_COUNT}" > "${RSS_RESTART_STATE}" 2>/dev/null
+
+                if [ "${RSS}" -gt "${RSS_HARD_LIMIT_KB}" ] 2>/dev/null; then
+                    log_user "⚠ 内存保护触发：MagicTier RSS ${RSS}KB 超过硬限制 ${RSS_HARD_LIMIT_KB}KB。"
+                else
+                    log_user "⚠ 内存保护触发：MagicTier RSS 已连续 ${RSS_OVER_LIMIT_COUNT} 次超过 ${RSS_LIMIT_KB}KB。"
+                fi
+                kill "${PID}" 2>/dev/null
+                sleep 2
+                pid_is_core "${PID}" && kill -9 "${PID}" 2>/dev/null
+                rm -f "${PIDFILE}"
+
+                if [ "${RESTART_COUNT}" -le "${RSS_RESTART_MAX}" ] 2>/dev/null; then
+                    log_user "正在自动重启 MagicTier 核心程序，不会重启路由器。"
+                    rm -f "${MONITOR_PIDFILE}"
+                    ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
+                else
+                    log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
+                    dbus set magic_enable="0"
+                fi
+                exit 0
             fi
 
             if ! periodic_monitor_tick; then
@@ -505,7 +460,8 @@ start_service() {
     sleep 2
 
     if ! is_running; then
-        log_user "⚠ MagicTier本次启动未成功；保留启用状态，等待系统网络/TUN就绪后自动重试。"
+        log_user "✗ MagicTier启动失败，已停止自动运行。"
+        dbus set magic_enable="0"
         rm -f "${PIDFILE}"
         trim_logs
         return 1
@@ -517,19 +473,6 @@ start_service() {
     trim_logs
     start_monitor
     return 0
-}
-
-ensure_service_started() {
-    [ "${magic_enable}" = "1" ] || return 0
-    ensure_init_links
-    rm -f "${STOP_MARKER}"
-    if is_running; then
-        if [ ! -f "${MONITOR_PIDFILE}" ] || ! kill -0 "$(cat "${MONITOR_PIDFILE}" 2>/dev/null)" 2>/dev/null; then
-            start_monitor
-        fi
-        return 0
-    fi
-    start_service
 }
 
 periodic_status_fields() {
@@ -585,11 +528,6 @@ health_status_fields() {
     PEER_COUNT=0
     CONN_COUNT=0
     RECONNECT_COUNT=0
-    RECONNECT_RECENT=0
-    RECONNECT_CONSEC_FAIL=0
-    RECONNECT_IN_FLIGHT=0
-    RECONNECT_LAST_RESULT=0
-    RECONNECT_LAST_TS=0
     if is_running; then
         HEALTH_PID="$(cat "${PIDFILE}" 2>/dev/null)"
         for FD in /proc/"${HEALTH_PID}"/fd/*; do
@@ -601,27 +539,22 @@ health_status_fields() {
         if [ -r "${CORE_HEALTH_STATE}" ]; then
             CORE_HEALTH_PID=0
             CORE_HEALTH_TS=0
-            read CORE_HEALTH_PID PEER_COUNT CONN_COUNT RECONNECT_COUNT RECONNECT_RECENT RECONNECT_CONSEC_FAIL RECONNECT_IN_FLIGHT RECONNECT_LAST_RESULT RECONNECT_LAST_TS CORE_HEALTH_TS < "${CORE_HEALTH_STATE}" 2>/dev/null
+            read CORE_HEALTH_PID PEER_COUNT CONN_COUNT RECONNECT_COUNT CORE_HEALTH_TS < "${CORE_HEALTH_STATE}" 2>/dev/null
             if [ "${CORE_HEALTH_PID}" != "${HEALTH_PID}" ]; then
                 PEER_COUNT=0
                 CONN_COUNT=0
                 RECONNECT_COUNT=0
-                RECONNECT_RECENT=0
-                RECONNECT_CONSEC_FAIL=0
-                RECONNECT_IN_FLIGHT=0
-                RECONNECT_LAST_RESULT=0
-                RECONNECT_LAST_TS=0
             fi
         fi
     fi
 
-    for VALUE_NAME in MEM_AVAILABLE_KB SLAB_KB SOCKET_MEM_KB SOCKET_COUNT PEER_COUNT CONN_COUNT RECONNECT_COUNT RECONNECT_RECENT RECONNECT_CONSEC_FAIL RECONNECT_IN_FLIGHT RECONNECT_LAST_RESULT RECONNECT_LAST_TS; do
+    for VALUE_NAME in MEM_AVAILABLE_KB SLAB_KB SOCKET_MEM_KB SOCKET_COUNT PEER_COUNT CONN_COUNT RECONNECT_COUNT; do
         eval 'VALUE=$'"${VALUE_NAME}"
         case "${VALUE}" in ''|*[!0-9]*) eval "${VALUE_NAME}=0" ;; esac
     done
 
-    printf '"mem_available_kb":%s,"slab_kb":%s,"socket_mem_kb":%s,"socket_count":%s,"peer_count":%s,"conn_count":%s,"reconnect_count":%s,"reconnect_recent_10m":%s,"reconnect_consecutive_failures":%s,"reconnect_in_flight":%s,"reconnect_last_result":%s,"reconnect_last_ts":%s' \
-        "${MEM_AVAILABLE_KB}" "${SLAB_KB}" "${SOCKET_MEM_KB}" "${SOCKET_COUNT}" "${PEER_COUNT}" "${CONN_COUNT}" "${RECONNECT_COUNT}" "${RECONNECT_RECENT}" "${RECONNECT_CONSEC_FAIL}" "${RECONNECT_IN_FLIGHT}" "${RECONNECT_LAST_RESULT}" "${RECONNECT_LAST_TS}"
+    printf '"mem_available_kb":%s,"slab_kb":%s,"socket_mem_kb":%s,"socket_count":%s,"peer_count":%s,"conn_count":%s,"reconnect_count":%s' \
+        "${MEM_AVAILABLE_KB}" "${SLAB_KB}" "${SOCKET_MEM_KB}" "${SOCKET_COUNT}" "${PEER_COUNT}" "${CONN_COUNT}" "${RECONNECT_COUNT}"
 }
 
 print_status() {
@@ -645,16 +578,8 @@ esac
 case "${ACTION}" in
     boot)
         [ "${magic_enable}" = "1" ] || exit 0
-        ensure_service_started
+        start_service
         exit $?
-        ;;
-    start_nat)
-        [ "${magic_enable}" = "1" ] || exit 0
-        if ensure_service_started; then
-            exit 0
-        fi
-        schedule_start_retry
-        exit 0
         ;;
     periodic-restart)
         ENABLED="$(dbus get magic_enable 2>/dev/null)"
@@ -679,17 +604,11 @@ case "${ACTION}" in
     start)
         if is_init_invocation; then
             [ "${magic_enable}" = "1" ] || exit 0
-            if ensure_service_started; then
-                exit 0
-            fi
-            schedule_start_retry
-            exit 0
         else
             dbus set magic_enable="1"
             magic_enable="1"
-            ensure_init_links
         fi
-        ensure_service_started
+        start_service
         exit $?
         ;;
     stop)
@@ -727,8 +646,7 @@ esac
 case "$2" in
     1)
         if [ "${magic_enable}" = "1" ]; then
-            ensure_init_links
-            ensure_service_started
+            start_service
         else
             stop_service
             rm -f "${PERIODIC_RESTART_STATE}"
@@ -739,8 +657,7 @@ case "$2" in
     2)
         dbus set magic_enable="1"
         magic_enable="1"
-        ensure_init_links
-        ensure_service_started
+        start_service
         http_response "$1"
         ;;
     3)
@@ -754,7 +671,6 @@ case "$2" in
     4)
         dbus set magic_enable="1"
         magic_enable="1"
-        ensure_init_links
         stop_service
         start_service
         http_response "$1"
@@ -778,7 +694,7 @@ case "$2" in
         ;;
     *)
         if [ "${magic_enable}" = "1" ]; then
-            ensure_service_started
+            start_service
         else
             stop_service
         fi

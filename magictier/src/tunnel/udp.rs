@@ -15,7 +15,7 @@ use zerocopy::{AsBytes, FromBytes};
 use std::net::SocketAddr;
 use tokio::{
     net::UdpSocket,
-    sync::mpsc::{Receiver, Sender},
+    sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender},
     task::JoinSet,
 };
 
@@ -23,7 +23,7 @@ use tracing::{instrument, Instrument};
 
 use super::{packet_def::V6HolePunchPacket, TunnelInfo};
 use crate::{
-    common::{join_joinset_background, low_memory_mode, scoped_task::ScopedTask, shrink_dashmap, stun_codec_ext::get_stun_tid_prefix_bytes},
+    common::{join_joinset_background, scoped_task::ScopedTask, shrink_dashmap, stun_codec_ext::get_stun_tid_prefix_bytes},
     tunnel::{
         build_url_from_socket_addr,
         common::{reserve_buf, TunnelWrapper},
@@ -41,8 +41,8 @@ use super::{
 
 pub const UDP_DATA_MTU: usize = 2000;
 
-type UdpCloseEventSender = Sender<(SocketAddr, Option<TunnelError>)>;
-type UdpCloseEventReceiver = Receiver<(SocketAddr, Option<TunnelError>)>;
+type UdpCloseEventSender = UnboundedSender<(SocketAddr, Option<TunnelError>)>;
+type UdpCloseEventReceiver = UnboundedReceiver<(SocketAddr, Option<TunnelError>)>;
 
 fn new_udp_packet<F>(f: F, udp_body: Option<&[u8]>) -> ZCPacket
 where
@@ -321,7 +321,7 @@ impl UdpConnection {
         let forward_task = tokio::spawn(async move {
             let close_event_sender = close_event_sender;
             let err = forward_from_ring_to_udp(ring_recv, &s, &dst_addr, conn_id).await;
-            if let Err(e) = close_event_sender.send((dst_addr, err)).await {
+            if let Err(e) = close_event_sender.send((dst_addr, err)) {
                 tracing::error!(?e, "udp send close event error");
             }
         })
@@ -511,8 +511,7 @@ pub struct UdpTunnelListener {
 
 impl UdpTunnelListener {
     pub fn new(addr: url::Url) -> Self {
-        let close_event_capacity = if low_memory_mode() { 32 } else { 128 };
-        let (close_event_send, close_event_recv) = tokio::sync::mpsc::channel(close_event_capacity);
+        let (close_event_send, close_event_recv) = tokio::sync::mpsc::unbounded_channel();
         let (conn_send, conn_recv) = tokio::sync::mpsc::channel(100);
         Self {
             addr: addr.clone(),
@@ -718,7 +717,7 @@ impl UdpTunnelConnector {
             "udp build tunnel for connector"
         );
 
-        let (close_event_sender, mut close_event_recv) = tokio::sync::mpsc::channel(1);
+        let (close_event_sender, mut close_event_recv) = tokio::sync::mpsc::unbounded_channel();
 
         let ring_recv = RingStream::new(ring_for_send_udp.clone());
         let ring_sender = RingSink::new(ring_for_recv_udp.clone());
