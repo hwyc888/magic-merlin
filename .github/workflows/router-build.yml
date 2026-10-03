@@ -242,6 +242,13 @@ jobs:
           grep -q 'is_init_invocation' router-plugin/scripts/magic_config.sh
           grep -q '/koolshare/init.d/S97magic.sh' router-plugin/install.sh
           grep -q '/koolshare/init.d/N97magic.sh' router-plugin/install.sh
+          grep -q '/koolshare/init.d/V97magic.sh' router-plugin/install.sh
+          grep -q 'BOOT_RETRY_MAX=12' router-plugin/scripts/magic_config.sh
+          grep -q 'BOOT_RETRY_DELAY=10' router-plugin/scripts/magic_config.sh
+          grep -q 'MAGICTIER_PRESERVE_ENABLE_ON_FAIL' router-plugin/scripts/magic_config.sh
+          grep -q 'schedule_boot_retry' router-plugin/scripts/magic_config.sh
+          grep -q 'ensure_init_links' router-plugin/scripts/magic_config.sh
+          grep -q 'V97magic.sh' router-plugin/uninstall.sh
           grep -q '不会重启路由器' router-plugin/scripts/magic_config.sh
           ! grep -qi 'reboot' router-plugin/scripts/magic_config.sh
           grep -q 'RSS_LIMIT_CURRENT.*262144' router-plugin/install.sh
