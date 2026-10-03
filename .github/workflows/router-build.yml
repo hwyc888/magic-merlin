@@ -11,7 +11,7 @@ on:
       - '.github/workflows/router-build.yml'
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 concurrency:
@@ -380,6 +380,24 @@ jobs:
           sha256sum DIST/*.tar.gz > DIST/SHA256SUMS.txt
           ls -lh DIST/*.tar.gz DIST/SHA256SUMS.txt
           stat -c '%n bytes=%s' DIST/*.tar.gz
+
+      - name: Publish direct install packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(cat router-plugin/version)"
+          TAG="router-v${VERSION}"
+          TITLE="MagicTier Router v${VERSION}"
+          NOTES="ASUSWRT-Merlin/KoolCenter 路由器安装包。TUF-BE3600 V2 使用 ARMv7 包；RT-AX86U 使用 ARM64 包。"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release edit "${TAG}" --title "${TITLE}" --notes "${NOTES}" --prerelease
+          else
+            gh release create "${TAG}" --target "${GITHUB_SHA}" --title "${TITLE}" --notes "${NOTES}" --prerelease
+          fi
+
+          gh release upload "${TAG}" DIST/magic-TUF-BE3600-V2-koolcenter-armv7.tar.gz DIST/magic-RT-AX86U-koolcenter-arm64.tar.gz DIST/SHA256SUMS.txt --clobber
 
       - name: Upload router packages
         uses: actions/upload-artifact@v7
