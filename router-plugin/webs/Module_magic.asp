@@ -51,17 +51,33 @@ function init(){
     periodicTimer=setInterval(update_periodic_status,1000);
 }
 function save(){
-    db_magic.magic_enable=E("magic_enable").checked?"1":"0";
-    db_magic.magic_periodic_restart_enable=E("magic_periodic_restart_enable").checked?"1":"0";
+    var desiredEnable=E("magic_enable").checked?"1":"0";
+    var dbus_new={};
+    dbus_new.magic_enable=desiredEnable;
+    dbus_new.magic_periodic_restart_enable=E("magic_periodic_restart_enable").checked?"1":"0";
     var periodicHours=parseInt(E("magic_periodic_restart_hours").value,10);
     var retryMinutes=parseInt(E("magic_periodic_retry_minutes").value,10);
     if(!periodicHours||periodicHours<1||periodicHours>8760){alert("定时重启周期请输入 1～8760 小时。");return;}
     if(!retryMinutes||retryMinutes<1||retryMinutes>1440){alert("失败重试间隔请输入 1～1440 分钟。");return;}
-    db_magic.magic_periodic_restart_hours=String(periodicHours);
-    db_magic.magic_periodic_retry_minutes=String(retryMinutes);
-    ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){db_magic["magic_"+k]=E("magic_"+k).value;});
+    dbus_new.magic_periodic_restart_hours=String(periodicHours);
+    dbus_new.magic_periodic_retry_minutes=String(retryMinutes);
+    ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){dbus_new["magic_"+k]=E("magic_"+k).value;});
     showLoading(3);
-    api("magic_config.sh",[1],db_magic,function(){setTimeout(function(){location.reload();},2200);});
+    api("magic_config.sh",["save",desiredEnable],dbus_new,function(xhr){
+        if(xhr.status!==200){alert("保存失败：路由器软件中心 API 返回异常，请刷新页面后重试。");setTimeout(function(){location.reload();},800);return;}
+        setTimeout(function(){
+            $.ajax({type:"GET",url:"/_api/magic",dataType:"json",cache:false,success:function(data){
+                var saved=(data.result&&data.result[0])?data.result[0]:{};
+                if(saved.magic_enable!==desiredEnable){
+                    alert("保存校验失败：开机自动启动状态没有写入成功。");
+                }
+                location.reload();
+            },error:function(){
+                alert("保存后校验失败：无法读取路由器持久化配置。");
+                location.reload();
+            }});
+        },600);
+    });
 }
 function service_action(action){
     var code=action=="start"?2:action=="stop"?3:4;

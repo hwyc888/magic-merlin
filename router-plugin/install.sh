@@ -7,6 +7,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="/koolshare/magic"
 OWNER_MARKER="${INSTALL_DIR}/.magic-owned"
 LEGACY_OWNER_MARKER="${INSTALL_DIR}/.magictier-owned"
+ENABLE_MARKER="${INSTALL_DIR}/.autostart-enabled"
 TITLE="MagicTier Magic"
 DESCR="MagicTier ARMv7/ARM64 mesh networking"
 PLVER="$(cat "${DIR}/version" 2>/dev/null || echo 1.0.0)"
@@ -193,8 +194,15 @@ install_now() {
     dbus set softcenter_module_magic_description="${DESCR}"
     dbus set softcenter_module_magic_home_url="Module_magic.asp"
 
+    if [ "$(dbus get magic_enable 2>/dev/null)" = "1" ]; then
+        printf "1\n" > "${ENABLE_MARKER}" 2>/dev/null
+    else
+        rm -f "${ENABLE_MARKER}"
+    fi
+
     if [ "${ENABLE}" = "1" ]; then
         dbus set magic_enable="1"
+        printf "1\n" > "${ENABLE_MARKER}" 2>/dev/null
         MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1 sh /koolshare/scripts/magic_config.sh start >/dev/null 2>&1
     fi
 

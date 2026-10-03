@@ -26,6 +26,7 @@ BOOT_RETRY_PIDFILE="/var/run/magic-boot-retry.pid"
 BOOT_RETRY_MAX=12
 BOOT_RETRY_DELAY=10
 STOP_MARKER="/tmp/magic_intentional_stop"
+ENABLE_MARKER="/koolshare/magic/.autostart-enabled"
 PERIODIC_RESTART_STATE="/tmp/magic_periodic_restart.state"
 PERIODIC_RESTART_MAX=3
 PERIODIC_RESTART_ENABLE="${magic_periodic_restart_enable:-0}"
@@ -100,6 +101,41 @@ ensure_init_links() {
     ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/V97magic.sh
 }
 
+persist_enable() {
+    case "$1" in
+        1)
+            mkdir -p /koolshare/magic
+            printf "1\n" > "${ENABLE_MARKER}" 2>/dev/null
+            dbus set magic_enable="1"
+            magic_enable="1"
+            ;;
+        *)
+            rm -f "${ENABLE_MARKER}"
+            dbus set magic_enable="0"
+            magic_enable="0"
+            ;;
+    esac
+}
+
+restore_persisted_enable() {
+    ENABLED="$(dbus get magic_enable 2>/dev/null)"
+    if [ "${ENABLED}" = "1" ]; then
+        magic_enable="1"
+        if [ ! -f "${ENABLE_MARKER}" ]; then
+            mkdir -p /koolshare/magic
+            printf "1\n" > "${ENABLE_MARKER}" 2>/dev/null
+        fi
+        return 0
+    fi
+    if [ -f "${ENABLE_MARKER}" ]; then
+        dbus set magic_enable="1"
+        magic_enable="1"
+        return 0
+    fi
+    magic_enable="0"
+    return 1
+}
+
 schedule_boot_retry() {
     if [ -f "${BOOT_RETRY_PIDFILE}" ]; then
         BPID="$(cat "${BOOT_RETRY_PIDFILE}" 2>/dev/null)"
@@ -114,8 +150,7 @@ schedule_boot_retry() {
         ATTEMPT=1
         while [ "${ATTEMPT}" -le "${BOOT_RETRY_MAX}" ] 2>/dev/null; do
             sleep "${BOOT_RETRY_DELAY}"
-            ENABLED="$(dbus get magic_enable 2>/dev/null)"
-            [ "${ENABLED}" = "1" ] || exit 0
+            restore_persisted_enable || exit 0
             is_running && exit 0
             sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1
             sleep 1
@@ -268,8 +303,7 @@ start_monitor() {
             [ ! -f "${PIDFILE}" ] || PID="$(cat "${PIDFILE}" 2>/dev/null)"
             if [ -z "${PID}" ] || ! pid_is_core "${PID}" || ! kill -0 "${PID}" 2>/dev/null; then
                 [ ! -f "${STOP_MARKER}" ] || exit 0
-                ENABLED="$(dbus get magic_enable 2>/dev/null)"
-                [ "${ENABLED}" = "1" ] || exit 0
+                restore_persisted_enable || exit 0
 
                 NOW="$(date +%s 2>/dev/null)"
                 [ -n "${NOW}" ] || NOW=0
@@ -293,8 +327,7 @@ start_monitor() {
                     log_user "正在自动恢复组网连接，不会重启路由器。"
                     ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
                 else
-                    log_user "✗ MagicTier 核心程序在10分钟内连续异常超过3次，已停止自动运行以保护路由器。"
-                    dbus set magic_enable="0"
+                    log_user "✗ MagicTier 核心程序在10分钟内连续异常超过3次，已停止本轮自动恢复以保护路由器；保留开机自动启动设置。"
                 fi
                 exit 0
             fi
@@ -365,8 +398,7 @@ start_monitor() {
                     rm -f "${MONITOR_PIDFILE}"
                     ( sleep 3; MAGICTIER_PRESERVE_LOG=1 sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1 ) &
                 else
-                    log_user "✗ 10分钟内多次触发内存保护，已停止 MagicTier 自动运行以保护路由器。"
-                    dbus set magic_enable="0"
+                    log_user "✗ 10分钟内多次触发内存保护，已停止本轮 MagicTier 自动恢复以保护路由器；保留开机自动启动设置。"
                 fi
                 exit 0
             fi
@@ -424,8 +456,7 @@ start_service() {
         if [ "${MAGICTIER_PRESERVE_ENABLE_ON_FAIL:-0}" = "1" ]; then
             log_user "✗ MagicTier启动失败，保留开机自动启动设置并等待重试。"
         else
-            log_user "✗ MagicTier启动失败，已停止自动运行。"
-            dbus set magic_enable="0"
+            log_user "✗ MagicTier启动失败，保留开机自动启动设置。"
         fi
         rm -f "${PIDFILE}"
         trim_logs
@@ -488,13 +519,14 @@ esac
 
 case "${ACTION}" in
     boot)
-        ENABLED="$(dbus get magic_enable 2>/dev/null)"
-        [ "${ENABLED}" = "1" ] || exit 0
-        magic_enable="1"
+        restore_persisted_enable || exit 0
         ensure_init_links
         MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
-        start_service
-        exit $?
+        if start_service; then
+            exit 0
+        fi
+        schedule_boot_retry
+        exit 0
         ;;
     periodic-restart)
         ENABLED="$(dbus get magic_enable 2>/dev/null)"
@@ -518,7 +550,7 @@ case "${ACTION}" in
         ;;
     start)
         if is_init_invocation; then
-            [ "${magic_enable}" = "1" ] || exit 0
+            restore_persisted_enable || exit 0
             ensure_init_links
             MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
             if start_service; then
@@ -528,16 +560,14 @@ case "${ACTION}" in
             exit 0
         else
             ensure_init_links
-            dbus set magic_enable="1"
-            magic_enable="1"
+            persist_enable 1
         fi
         start_service
         exit $?
         ;;
     stop)
         if ! is_init_invocation; then
-            dbus set magic_enable="0"
-            magic_enable="0"
+            persist_enable 0
         fi
         stop_service
         rm -f "${PERIODIC_RESTART_STATE}"
@@ -546,10 +576,9 @@ case "${ACTION}" in
         ;;
     restart)
         if is_init_invocation; then
-            [ "${magic_enable}" = "1" ] || exit 0
+            restore_persisted_enable || exit 0
         else
-            dbus set magic_enable="1"
-            magic_enable="1"
+            persist_enable 1
         fi
         stop_service
         start_service
@@ -567,8 +596,13 @@ case "${ACTION}" in
 esac
 
 case "$2" in
-    1)
+    save|1)
         ensure_init_links
+        if [ "$2" = "save" ]; then
+            persist_enable "$3"
+        else
+            persist_enable "$(dbus get magic_enable 2>/dev/null)"
+        fi
         if [ "${magic_enable}" = "1" ]; then
             MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
             if ! start_service; then
@@ -582,22 +616,19 @@ case "$2" in
         http_response "$1"
         ;;
     2)
-        dbus set magic_enable="1"
-        magic_enable="1"
+        persist_enable 1
         start_service
         http_response "$1"
         ;;
     3)
-        dbus set magic_enable="0"
-        magic_enable="0"
+        persist_enable 0
         stop_service
         rm -f "${PERIODIC_RESTART_STATE}"
         log_user "MagicTier已停止。"
         http_response "$1"
         ;;
     4)
-        dbus set magic_enable="1"
-        magic_enable="1"
+        persist_enable 1
         stop_service
         start_service
         http_response "$1"
@@ -619,7 +650,7 @@ case "$2" in
         fi
         ;;
     *)
-        if [ "${magic_enable}" = "1" ]; then
+        if restore_persisted_enable; then
             start_service
         else
             stop_service
