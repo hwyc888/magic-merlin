@@ -293,7 +293,7 @@ function reload_Soft_Center(){
 <tr><th>操作</th><td><input class="button_gen" type="button" onclick="service_action('start');" value="启动" />&nbsp;<input class="button_gen" type="button" onclick="service_action('stop');" value="停止" />&nbsp;<input class="button_gen" type="button" onclick="service_action('restart');" value="重启" />&nbsp;<input class="button_gen" type="button" onclick="show_log();" value="查看组网日志" /></td></tr></table>
 <table style="margin-top:10px;" width="100%" border="1" align="center" cellpadding="4" cellspacing="0" bordercolor="#6b8fa3" class="FormTable"><thead><tr><td colspan="2">运行设置</td></tr></thead>
 <tr><th>配置管理</th><td><input class="button_gen" type="button" onclick="show_import();" value="手工粘贴配置" />&nbsp;<input class="button_gen" type="button" onclick="show_config();" value="查看配置" />&nbsp;<input class="button_gen" type="button" onclick="download_config_text();" value="导出文本" /></td></tr>
-<tr><th>启用 MagicTier</th><td><input id="magic_enable" type="checkbox" /></td></tr>
+<tr><th>启用 MagicTier</th><td><input id="magic_enable" type="checkbox" /> 保存后路由器重启会自动启动；开机阶段首次启动失败会保留此设置并自动重试</td></tr>
 <tr><th>定时重启服务</th><td><input id="magic_periodic_restart_enable" type="checkbox" /> 启用后按周期重启 MagicTier 核心（会短暂中断当前组网/RDP）</td></tr>
 <tr><th>重启周期</th><td><input id="magic_periodic_restart_hours" class="input_ss_table" type="number" min="1" max="8760" style="width:90px" value="24" /> 小时</td></tr>
 <tr><th>组网失败后重试</th><td><input id="magic_periodic_retry_minutes" class="input_ss_table" type="number" min="1" max="1440" style="width:90px" value="5" /> 分钟；重启后未检测到“组网连接成功”则再次重启，最多3次</td></tr>
