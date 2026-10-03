@@ -38,6 +38,10 @@ class KoolCenterHookTest(unittest.TestCase):
         functions = source[start:end]
         functions = functions.replace("/jffs/scripts", "$TEST_ROOT/jffs/scripts")
         functions = functions.replace("/koolshare/bin", "$TEST_ROOT/koolshare/bin")
+        functions = functions.replace("/koolshare/init.d", "$TEST_ROOT/koolshare/init.d")
+        functions = functions.replace("/koolshare/scripts", "$TEST_ROOT/koolshare/scripts")
+        (self.root / "koolshare/init.d").mkdir(parents=True)
+        (self.root / "koolshare/scripts").mkdir(parents=True)
         root = shell_path(self.root)
         harness = f"""#!/bin/sh
 TEST_ROOT='{root}'
@@ -57,8 +61,12 @@ nvram() {{
 }}
 echo_date() {{ :; }}
 sync() {{ :; }}
+ln() {{ printf '%s\n' "$*" >> "$TEST_ROOT/ln.log"; }}
 {functions}
-ensure_koolcenter_boot_hooks
+case "$1" in
+    hooks) ensure_koolcenter_boot_hooks ;;
+    *) PACKAGE_PROFILE="$1"; configure_model_boot ;;
+esac
 """
         self.script = self.root / "run.sh"
         self.script.write_text(harness, encoding="utf8")
@@ -68,7 +76,17 @@ ensure_koolcenter_boot_hooks
 
     def run_hook(self):
         result = subprocess.run(
-            [SHELL, shell_path(self.script)],
+            [SHELL, shell_path(self.script), "hooks"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def run_profile(self, profile):
+        result = subprocess.run(
+            [SHELL, shell_path(self.script), profile],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -108,6 +126,34 @@ ensure_koolcenter_boot_hooks
         self.assertEqual(service_text.count(self.command("services-start")), 1)
         self.assertEqual(nat_text.count(self.command("nat-start")), 1)
         self.assertEqual((self.root / "nvram/commits").read_text(), "1")
+
+    def test_tuf_profile_repairs_jffs_and_installs_its_start_entries(self):
+        self.run_profile("TUF-BE3600-V2")
+        self.assertEqual((self.root / "nvram/jffs2_scripts").read_text(), "1")
+        self.assertTrue((self.root / "jffs/scripts/services-start").exists())
+        links = (self.root / "ln.log").read_text(encoding="utf8")
+        self.assertIn("S97magic.sh", links)
+        self.assertIn("N97magic.sh", links)
+        self.assertIn("V97magic.sh", links)
+
+    def test_ax86u_profile_does_not_modify_jffs(self):
+        self.run_profile("RT-AX86U")
+        self.assertEqual((self.root / "nvram/jffs2_scripts").read_text(), "0")
+        self.assertFalse((self.root / "nvram/commits").exists())
+        self.assertEqual(list((self.root / "jffs/scripts").iterdir()), [])
+        links = (self.root / "ln.log").read_text(encoding="utf8")
+        self.assertIn("S97magic.sh", links)
+        self.assertIn("N97magic.sh", links)
+        self.assertIn("V97magic.sh", links)
+
+    def test_installer_binds_each_package_profile_to_its_model_family(self):
+        source = (REPO / "router-plugin/install.sh").read_text(encoding="utf8")
+        self.assertIn('case "${PACKAGE_PROFILE}" in', source)
+        self.assertIn("TUF-BE3600_V2", source)
+        self.assertIn("TUF_3600_V2", source)
+        self.assertIn("RT-AX86U", source)
+        self.assertIn("这是 TUF-BE3600 V2 专用包", source)
+        self.assertIn("这是 RT-AX86U 专用包", source)
 
 
 if __name__ == "__main__":

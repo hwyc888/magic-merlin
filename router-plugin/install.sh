@@ -11,28 +11,56 @@ ENABLE_MARKER="${INSTALL_DIR}/.autostart-enabled"
 TITLE="MagicTier Magic"
 DESCR="MagicTier ARMv7/ARM64 mesh networking"
 PLVER="$(cat "${DIR}/version" 2>/dev/null || echo 1.0.0)"
+PACKAGE_PROFILE="$(cat "${DIR}/package-profile" 2>/dev/null)"
 
 alias echo_date='echo 〖$(TZ=UTC-8 date -R +%Y年%m月%d日\ %X)〗:'
 
 get_model() {
-    MODEL="$(nvram get productid 2>/dev/null)"
-    [ -n "${MODEL}" ] || MODEL="$(nvram get odmpid 2>/dev/null)"
+    PRODUCT_ID="$(nvram get productid 2>/dev/null)"
+    ODM_ID="$(nvram get odmpid 2>/dev/null)"
+    MODEL="${ODM_ID}"
+    [ -n "${MODEL}" ] || MODEL="${PRODUCT_ID}"
 }
 
 platform_test() {
     ARCH="$(uname -m 2>/dev/null)"
-    case "${ARCH}" in
-        aarch64|arm64|armv7l|armv7) ;;
-        *)
-            echo_date "不支持的CPU架构：${ARCH}，本插件支持ARMv7/ARM64。"
-            exit 1
-            ;;
-    esac
 
-    case "${MODEL}" in
-        RT-AX86U|TUF-BE3600_V2|TUF-BE3600-V2|TUF_3600_V2) ;;
+    case "${PACKAGE_PROFILE}" in
+        TUF-BE3600-V2)
+            case "${ARCH}" in
+                armv7l|armv7) ;;
+                *)
+                    echo_date "安装包不匹配：TUF-BE3600 V2 包要求 ARMv7，当前架构为 ${ARCH}。"
+                    exit 1
+                    ;;
+            esac
+            case "${PRODUCT_ID}:${ODM_ID}" in
+                *TUF-BE3600_V2*|*TUF-BE3600-V2*|*TUF_3600_V2*) ;;
+                *)
+                    echo_date "安装包不匹配：这是 TUF-BE3600 V2 专用包，当前机型为 ${MODEL}。"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        RT-AX86U)
+            case "${ARCH}" in
+                aarch64|arm64) ;;
+                *)
+                    echo_date "安装包不匹配：RT-AX86U 包要求 ARM64，当前架构为 ${ARCH}。"
+                    exit 1
+                    ;;
+            esac
+            case "${PRODUCT_ID}:${ODM_ID}" in
+                *RT-AX86U*) ;;
+                *)
+                    echo_date "安装包不匹配：这是 RT-AX86U 专用包，当前机型为 ${MODEL}。"
+                    exit 1
+                    ;;
+            esac
+            ;;
         *)
-            echo_date "警告：当前机型 ${MODEL} 未列入本发布包的验证机型。"
+            echo_date "安装包缺少或包含未知型号标识：${PACKAGE_PROFILE:-empty}。"
+            exit 1
             ;;
     esac
 
@@ -148,6 +176,34 @@ ensure_koolcenter_boot_hooks() {
     sync
 }
 
+install_init_links() {
+    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/S97magic.sh
+    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/N97magic.sh
+    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/V97magic.sh
+}
+
+configure_tuf_boot() {
+    install_init_links
+    ensure_koolcenter_boot_hooks
+    echo_date "TUF-BE3600 V2：已按KoolCenter/JFFS启动链配置开机自启动。"
+}
+
+configure_ax86u_boot() {
+    install_init_links
+    echo_date "RT-AX86U：保留现有KoolCenter/JFFS设置，仅安装MagicTier自身启动入口。"
+}
+
+configure_model_boot() {
+    case "${PACKAGE_PROFILE}" in
+        TUF-BE3600-V2) configure_tuf_boot ;;
+        RT-AX86U) configure_ax86u_boot ;;
+        *)
+            echo_date "未知安装包型号标识：${PACKAGE_PROFILE:-empty}。"
+            exit 1
+            ;;
+    esac
+}
+
 install_now() {
     IS_UPGRADE=0
     IS_LEGACY_UPGRADE=0
@@ -213,10 +269,7 @@ install_now() {
 
     chmod 0755 /koolshare/bin/magic-core
     chmod 0755 /koolshare/scripts/magic_config.sh /koolshare/scripts/magic_health.sh /koolshare/scripts/uninstall_magic.sh
-    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/S97magic.sh
-    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/N97magic.sh
-    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/V97magic.sh
-    ensure_koolcenter_boot_hooks
+    configure_model_boot
 
     if [ "${IS_UPGRADE}" = "1" ]; then
         dbus set magic_enable="${OLD_ENABLE}"

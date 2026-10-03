@@ -213,8 +213,8 @@ jobs:
           grep -q 'DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000' magictier/src/peers/peer.rs
           grep -q 'DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD: u64 = 4 \* 1024' magictier/src/peers/peer.rs
           grep -q 'current_path_active' magictier/src/peers/peer.rs
-          test "$(cat router-plugin/version)" = "1.2.6"
-          grep -q '"version": "1.2.6"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.2.7"
+          grep -q '"version": "1.2.7"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
           grep -q 'window.top.location.replace(target)' router-plugin/webs/Module_magic.asp
           grep -q 'onunload="unloadPage();"' router-plugin/webs/Module_magic.asp
@@ -262,6 +262,9 @@ jobs:
           grep -q '/koolshare/init.d/V97magic.sh' router-plugin/install.sh
           grep -q 'nvram set jffs2_scripts=1' router-plugin/install.sh
           grep -q 'ensure_koolcenter_boot_hooks' router-plugin/install.sh
+          grep -q 'configure_tuf_boot' router-plugin/install.sh
+          grep -q 'configure_ax86u_boot' router-plugin/install.sh
+          grep -q 'PACKAGE_PROFILE=.*package-profile' router-plugin/install.sh
           grep -Fq 'ensure_jffs_hook /jffs/scripts/services-start "/koolshare/bin/ks-services-start.sh"' router-plugin/install.sh
           grep -Fq 'ensure_jffs_hook /jffs/scripts/wan-start "/koolshare/bin/ks-wan-start.sh start"' router-plugin/install.sh
           grep -Fq 'ensure_jffs_hook /jffs/scripts/nat-start "/koolshare/bin/ks-nat-start.sh start_nat"' router-plugin/install.sh
@@ -368,6 +371,8 @@ jobs:
           install -m 0755 magictier/target/aarch64-unknown-linux-musl/router/magictier-core DIST/RT-AX86U/magic/bin/magic-core
 
           chmod 0755 DIST/*/magic/install.sh DIST/*/magic/uninstall.sh DIST/*/magic/scripts/magic_config.sh DIST/*/magic/scripts/magic_health.sh
+          printf '%s\n' 'TUF-BE3600-V2' > DIST/TUF-BE3600-V2/magic/package-profile
+          printf '%s\n' 'RT-AX86U' > DIST/RT-AX86U/magic/package-profile
           printf '%s\n' 'TUF-BE3600 V2 / TUF_3600_V2 (ARMv7)' > DIST/TUF-BE3600-V2/magic/target-model.txt
           printf '%s\n' 'RT-AX86U (ARM64)' > DIST/RT-AX86U/magic/target-model.txt
 
@@ -379,11 +384,14 @@ jobs:
             tar -tzf "${pkg}" | grep -qx 'magic/install.sh'
             tar -tzf "${pkg}" | grep -qx 'magic/.valid'
             tar -tzf "${pkg}" | grep -qx 'magic/bin/magic-core'
+            tar -tzf "${pkg}" | grep -qx 'magic/package-profile'
             ! tar -tzf "${pkg}" | grep -q 'magic/bin/magic-cli'
             tar -tzf "${pkg}" | grep -qx 'magic/scripts/magic_config.sh'
             tar -tzf "${pkg}" | grep -qx 'magic/webs/Module_magic.asp'
             tar -tzf "${pkg}" | grep -qx 'magic/res/magic.png'
           done
+          test "$(tar -xOzf DIST/magic-TUF-BE3600-V2-koolcenter-armv7.tar.gz magic/package-profile)" = "TUF-BE3600-V2"
+          test "$(tar -xOzf DIST/magic-RT-AX86U-koolcenter-arm64.tar.gz magic/package-profile)" = "RT-AX86U"
 
           sha256sum DIST/*.tar.gz > DIST/SHA256SUMS.txt
           ls -lh DIST/*.tar.gz DIST/SHA256SUMS.txt
