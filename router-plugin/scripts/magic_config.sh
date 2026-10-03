@@ -596,13 +596,9 @@ case "${ACTION}" in
 esac
 
 case "$2" in
-    save|1)
+    1)
         ensure_init_links
-        if [ "$2" = "save" ]; then
-            persist_enable "$3"
-        else
-            persist_enable "$(dbus get magic_enable 2>/dev/null)"
-        fi
+        persist_enable "$(dbus get magic_enable 2>/dev/null)"
         if [ "${magic_enable}" = "1" ]; then
             MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
             if ! start_service; then

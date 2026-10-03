@@ -63,8 +63,8 @@ function save(){
     dbus_new.magic_periodic_retry_minutes=String(retryMinutes);
     ["hostname","instance_name","network_name","network_secret","ipv4","peers","listeners","proxy_networks"].forEach(function(k){dbus_new["magic_"+k]=E("magic_"+k).value;});
     showLoading(3);
-    api("magic_config.sh",["save",desiredEnable],dbus_new,function(xhr){
-        if(xhr.status!==200){alert("保存失败：路由器软件中心 API 返回异常，请刷新页面后重试。");setTimeout(function(){location.reload();},800);return;}
+    api("magic_config.sh",[1],dbus_new,function(xhr){
+        if(xhr.status<200||xhr.status>=300){alert("保存失败：路由器软件中心 API 返回异常，请刷新页面后重试。");setTimeout(function(){location.reload();},800);return;}
         setTimeout(function(){
             $.ajax({type:"GET",url:"/_api/magic",dataType:"json",cache:false,success:function(data){
                 var saved=(data.result&&data.result[0])?data.result[0]:{};
