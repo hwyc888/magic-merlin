@@ -116,6 +116,7 @@ schedule_boot_retry() {
             sleep "${BOOT_RETRY_DELAY}"
             ENABLED="$(dbus get magic_enable 2>/dev/null)"
             [ "${ENABLED}" = "1" ] || exit 0
+            is_running && exit 0
             sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1
             sleep 1
             is_running && exit 0
