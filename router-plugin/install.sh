@@ -82,6 +82,72 @@ namespace_conflict_test() {
     fi
 }
 
+ensure_jffs_hook() {
+    HOOK_FILE="$1"
+    HOOK_COMMAND="$2"
+    HOOK_TMP="${HOOK_FILE}.magic.$$"
+    HOOK_CLEAN="${HOOK_FILE}.magic.clean.$$"
+
+    mkdir -p "$(dirname "${HOOK_FILE}")"
+    if [ ! -f "${HOOK_FILE}" ]; then
+        printf '#!/bin/sh\n%s\n' "${HOOK_COMMAND}" > "${HOOK_FILE}"
+    else
+        HOOK_COUNT="$(grep -F -x -c "${HOOK_COMMAND}" "${HOOK_FILE}" 2>/dev/null)"
+        [ -n "${HOOK_COUNT}" ] || HOOK_COUNT=0
+        if [ "${HOOK_COUNT}" != "1" ]; then
+            grep -F -v -x "${HOOK_COMMAND}" "${HOOK_FILE}" > "${HOOK_CLEAN}" 2>/dev/null || :
+            FIRST_LINE="$(sed -n '1p' "${HOOK_CLEAN}" 2>/dev/null)"
+            case "${FIRST_LINE}" in
+                \#\!*)
+                    {
+                        printf '%s\n' "${FIRST_LINE}"
+                        printf '%s\n' "${HOOK_COMMAND}"
+                        sed -n '2,$p' "${HOOK_CLEAN}"
+                    } > "${HOOK_TMP}"
+                    ;;
+                *)
+                    {
+                        printf '%s\n' "${HOOK_COMMAND}"
+                        cat "${HOOK_CLEAN}"
+                    } > "${HOOK_TMP}"
+                    ;;
+            esac
+            mv -f "${HOOK_TMP}" "${HOOK_FILE}"
+            rm -f "${HOOK_CLEAN}" >/dev/null 2>&1
+        fi
+    fi
+    chmod 0755 "${HOOK_FILE}"
+}
+
+ensure_koolcenter_boot_hooks() {
+    JFFS_CHANGED=0
+    if [ "$(nvram get jffs2_scripts 2>/dev/null)" != "1" ]; then
+        nvram set jffs2_scripts=1
+        JFFS_CHANGED=1
+    fi
+    if [ "${JFFS_CHANGED}" = "1" ]; then
+        nvram commit
+        echo_date "已开启JFFS自定义脚本，确保KoolCenter开机启动链可执行。"
+    fi
+
+    for HELPER in \
+        /koolshare/bin/ks-services-start.sh \
+        /koolshare/bin/ks-wan-start.sh \
+        /koolshare/bin/ks-nat-start.sh
+    do
+        if [ -f "${HELPER}" ]; then
+            chmod 0755 "${HELPER}"
+        else
+            echo_date "警告：缺少KoolCenter启动组件 ${HELPER}，请检查软件中心安装是否完整。"
+        fi
+    done
+
+    ensure_jffs_hook /jffs/scripts/services-start "/koolshare/bin/ks-services-start.sh"
+    ensure_jffs_hook /jffs/scripts/wan-start "/koolshare/bin/ks-wan-start.sh start"
+    ensure_jffs_hook /jffs/scripts/nat-start "/koolshare/bin/ks-nat-start.sh start_nat"
+    sync
+}
+
 install_now() {
     IS_UPGRADE=0
     IS_LEGACY_UPGRADE=0
@@ -150,6 +216,7 @@ install_now() {
     ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/S97magic.sh
     ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/N97magic.sh
     ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/V97magic.sh
+    ensure_koolcenter_boot_hooks
 
     if [ "${IS_UPGRADE}" = "1" ]; then
         dbus set magic_enable="${OLD_ENABLE}"
