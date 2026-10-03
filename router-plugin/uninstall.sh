@@ -6,7 +6,12 @@ if [ -x /koolshare/scripts/magic_config.sh ]; then
     sh /koolshare/scripts/magic_config.sh stop >/dev/null 2>&1
 fi
 
-rm -f /koolshare/init.d/S97magic.sh /koolshare/init.d/N97magic.sh
+if [ -f /var/run/magic-boot-retry.pid ]; then
+    BOOT_RETRY_PID="$(cat /var/run/magic-boot-retry.pid 2>/dev/null)"
+    [ -z "${BOOT_RETRY_PID}" ] || kill "${BOOT_RETRY_PID}" 2>/dev/null
+fi
+rm -f /var/run/magic-boot-retry.pid
+rm -f /koolshare/init.d/S97magic.sh /koolshare/init.d/N97magic.sh /koolshare/init.d/V97magic.sh
 rm -f /koolshare/bin/magic-core /koolshare/bin/magic-cli
 rm -f /koolshare/scripts/magic_config.sh /koolshare/scripts/magic_health.sh /koolshare/scripts/uninstall_magic.sh
 rm -f /koolshare/webs/Module_magic.asp /koolshare/res/icon-magic.png
