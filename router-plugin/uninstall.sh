@@ -18,7 +18,7 @@ rm -f /koolshare/webs/Module_magic.asp /koolshare/res/icon-magic.png
 if [ -f /koolshare/magic/.magic-owned ]; then
     rm -rf /koolshare/magic
 fi
-rm -f /tmp/upload/magic_log.txt /tmp/upload/magic_internal.log /tmp/upload/magic_health.txt
+rm -f /tmp/upload/magic_log.txt /tmp/upload/magic_internal.log /tmp/upload/magic_boot.log /tmp/upload/magic_health.txt
 
 dbus remove magic >/dev/null 2>&1
 dbus remove softcenter_module_magic >/dev/null 2>&1

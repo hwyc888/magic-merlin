@@ -1,14 +1,21 @@
 #!/bin/sh
 
-source /koolshare/scripts/base.sh
+. /koolshare/scripts/base.sh
 
-eval "$(dbus export magic 2>/dev/null)"
+MAGIC_CONFIG_LOADED=0
+CONFIG_EXPORT="$(dbus export magic_ 2>/dev/null)"
+if [ "$?" = "0" ]; then
+    eval "${CONFIG_EXPORT}"
+    [ -z "${magic_version}" ] || MAGIC_CONFIG_LOADED=1
+fi
+unset CONFIG_EXPORT
 
 BIN="/koolshare/bin/magic-core"
 PIDFILE="/var/run/magic.pid"
 MONITOR_PIDFILE="/var/run/magic-monitor.pid"
 LOGFILE="/tmp/upload/magic_log.txt"
 INTERNAL_LOGFILE="/tmp/upload/magic_internal.log"
+BOOT_LOGFILE="/tmp/upload/magic_boot.log"
 LOG_MAX_BYTES="${magic_log_max_bytes:-131072}"
 LOG_KEEP_BYTES="65536"
 INTERNAL_LOG_MAX_BYTES="65536"
@@ -51,6 +58,10 @@ acquire_lock() {
 
 lock_or_exit() {
     acquire_lock && return 0
+    if [ "${ACTION}" = "boot" ]; then
+        boot_log "busy: startup deferred while another operation holds the lock"
+        schedule_boot_retry
+    fi
     if [ -n "$2" ]; then
         http_response '{"ok":0,"msg":"busy"}'
     fi
@@ -92,6 +103,11 @@ is_init_invocation() {
         /koolshare/init.d/S97magic.sh|/koolshare/init.d/N97magic.sh|/koolshare/init.d/V97magic.sh) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+boot_log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "${BOOT_LOGFILE}"
+    trim_one_log "${BOOT_LOGFILE}" 32768 16384
 }
 
 ensure_init_links() {
@@ -146,17 +162,23 @@ schedule_boot_retry() {
     rm -f "${BOOT_RETRY_PIDFILE}"
 
     (
+        trap - EXIT
         trap 'rm -f "${BOOT_RETRY_PIDFILE}" >/dev/null 2>&1' EXIT
         ATTEMPT=1
         while [ "${ATTEMPT}" -le "${BOOT_RETRY_MAX}" ] 2>/dev/null; do
             sleep "${BOOT_RETRY_DELAY}"
-            restore_persisted_enable || exit 0
+            [ ! -f "${STOP_MARKER}" ] || exit 0
+            if [ -n "$(dbus get magic_version 2>/dev/null)" ]; then
+                [ "$(dbus get magic_enable 2>/dev/null)" = "1" ] || [ -f "${ENABLE_MARKER}" ] || exit 0
+            fi
             is_running && exit 0
+            boot_log "retry ${ATTEMPT}/${BOOT_RETRY_MAX}"
             sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1
             sleep 1
             is_running && exit 0
             ATTEMPT=$((ATTEMPT + 1))
         done
+        boot_log "failed: bounded startup retries exhausted; autostart preference retained"
         log_user "✗ 开机自动启动多次重试仍未成功；已保留启用设置，可稍后手工重启服务。"
     ) >/dev/null 2>&1 &
     echo $! > "${BOOT_RETRY_PIDFILE}"
@@ -303,7 +325,7 @@ start_monitor() {
             [ ! -f "${PIDFILE}" ] || PID="$(cat "${PIDFILE}" 2>/dev/null)"
             if [ -z "${PID}" ] || ! pid_is_core "${PID}" || ! kill -0 "${PID}" 2>/dev/null; then
                 [ ! -f "${STOP_MARKER}" ] || exit 0
-                restore_persisted_enable || exit 0
+                [ "$(dbus get magic_enable 2>/dev/null)" = "1" ] || [ -f "${ENABLE_MARKER}" ] || exit 0
 
                 NOW="$(date +%s 2>/dev/null)"
                 [ -n "${NOW}" ] || NOW=0
@@ -421,7 +443,7 @@ start_service() {
     stop_service
     rm -f "${STOP_MARKER}"
     [ "${MAGICTIER_PRESERVE_LOG}" = "1" ] || : > "${LOGFILE}"
-    : > "${INTERNAL_LOGFILE}"
+    [ "${MAGICTIER_PRESERVE_LOG}" = "1" ] || : > "${INTERNAL_LOGFILE}"
 
     log_user "正在启动 MagicTier..."
     [ -z "${magic_network_name}" ] || log_user "组网名称：${magic_network_name}"
@@ -499,6 +521,34 @@ periodic_status_fields() {
         "${MODE}" "${DUE}" "${REMAINING}" "${ATTEMPT}" "${PERIODIC_RESTART_MAX}"
 }
 
+diagnose_boot() {
+    printf 'version=%s\n' "$(cat /koolshare/magic/version 2>/dev/null)"
+    printf 'model=%s\n' "$(nvram get productid 2>/dev/null)"
+    printf 'jffs2_scripts=%s\n' "$(nvram get jffs2_scripts 2>/dev/null)"
+    printf 'config_ready=%s\n' "${MAGIC_CONFIG_LOADED}"
+    case "$(dbus get magic_enable 2>/dev/null)" in
+        1) echo 'enabled=1' ;;
+        0) echo 'enabled=0' ;;
+        *) echo 'enabled=unavailable' ;;
+    esac
+    if [ -f "${ENABLE_MARKER}" ]; then echo 'persistent_marker=1'; else echo 'persistent_marker=0'; fi
+    if is_running; then echo 'core=running'; else echo 'core=stopped'; fi
+    ls -l /koolshare/init.d/S97magic.sh /koolshare/init.d/N97magic.sh /koolshare/init.d/V97magic.sh 2>/dev/null
+    if [ -d "${LOCK_DIR}" ]; then
+        printf 'lock_owner=%s\n' "$(cat "${LOCK_DIR}/pid" 2>/dev/null)"
+    fi
+    if [ -r /jffs/scripts/services-start ]; then
+        grep -n 'ks-services-start.sh' /jffs/scripts/services-start
+    fi
+    echo '--- boot log (no network keys) ---'
+    if [ -r "${BOOT_LOGFILE}" ]; then
+        tail -n 60 "${BOOT_LOGFILE}"
+    else
+        echo 'No boot entry recorded. Check the firmware startup hook and installed version.'
+    fi
+    return 0
+}
+
 print_status() {
     if is_running; then
         PID="$(cat "${PIDFILE}")"
@@ -512,19 +562,45 @@ print_status() {
 
 ACTION="$1"
 
+# services-start invokes V* without arguments; NAT may pass start_nat.
+# All firmware startup events use the same retry-capable, idempotent path.
+if is_init_invocation; then
+    case "${ACTION}" in
+        ''|start|restart|start_nat|nat-start) ACTION=boot ;;
+    esac
+fi
+if [ "${ACTION}" = "boot" ]; then
+    boot_log "entry=${0##*/} config_ready=${MAGIC_CONFIG_LOADED}"
+fi
+
 case "${ACTION}:$2" in
-    status:*|*:6) ;;
+    status:*|diagnose-boot:*|*:6) ;;
     *) lock_or_exit "$@" ;;
 esac
 
 case "${ACTION}" in
     boot)
-        restore_persisted_enable || exit 0
-        ensure_init_links
-        MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
-        if start_service; then
+        if [ "${MAGIC_CONFIG_LOADED}" != "1" ]; then
+            boot_log "waiting: dbus configuration not ready; core not started with empty settings"
+            schedule_boot_retry
             exit 0
         fi
+        if ! restore_persisted_enable; then
+            boot_log "disabled: no enabled preference or persistent marker"
+            exit 0
+        fi
+        ensure_init_links
+        if is_running; then
+            boot_log "running: duplicate startup event ignored"
+            exit 0
+        fi
+        MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
+        MAGICTIER_PRESERVE_LOG=1
+        if start_service; then
+            boot_log "started: core process is running"
+            exit 0
+        fi
+        boot_log "waiting: core startup failed; see magic_internal.log; scheduling retry"
         schedule_boot_retry
         exit 0
         ;;
@@ -549,19 +625,8 @@ case "${ACTION}" in
         exit $?
         ;;
     start)
-        if is_init_invocation; then
-            restore_persisted_enable || exit 0
-            ensure_init_links
-            MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
-            if start_service; then
-                exit 0
-            fi
-            schedule_boot_retry
-            exit 0
-        else
-            ensure_init_links
-            persist_enable 1
-        fi
+        ensure_init_links
+        persist_enable 1
         start_service
         exit $?
         ;;
@@ -575,13 +640,13 @@ case "${ACTION}" in
         exit $?
         ;;
     restart)
-        if is_init_invocation; then
-            restore_persisted_enable || exit 0
-        else
-            persist_enable 1
-        fi
+        persist_enable 1
         stop_service
         start_service
+        exit $?
+        ;;
+    diagnose-boot)
+        diagnose_boot
         exit $?
         ;;
     status)

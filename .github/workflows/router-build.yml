@@ -7,6 +7,7 @@ on:
     paths:
       - 'magictier/**'
       - 'router-plugin/**'
+      - 'tests/router_boot_test.py'
       - '.github/workflows/router-build.yml'
 
 permissions:
@@ -26,6 +27,19 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Exercise router startup with sh and BusyBox ash
+        run: |
+          set -eu
+          if ! command -v busybox >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y busybox
+          fi
+          python3 tests/router_boot_test.py
+          mkdir -p /tmp/magic-test-ash
+          printf '#!/bin/sh\nexec %s ash "$@"\n' "$(command -v busybox)" > /tmp/magic-test-ash/sh
+          chmod 0755 /tmp/magic-test-ash/sh
+          PATH="/tmp/magic-test-ash:$PATH" ROUTER_TEST_SHELL=/tmp/magic-test-ash/sh python3 tests/router_boot_test.py
 
       - name: Decide whether core rebuild is required
         id: core
@@ -196,8 +210,8 @@ jobs:
           grep -q 'DEFAULT_CONN_MIN_IMPROVEMENT_US: u64 = 10_000' magictier/src/peers/peer.rs
           grep -q 'DEFAULT_CONN_ACTIVE_BYTES_THRESHOLD: u64 = 4 \* 1024' magictier/src/peers/peer.rs
           grep -q 'current_path_active' magictier/src/peers/peer.rs
-          test "$(cat router-plugin/version)" = "1.2.4"
-          grep -q '"version": "1.2.4"' router-plugin/config.json.js
+          test "$(cat router-plugin/version)" = "1.2.5"
+          grep -q '"version": "1.2.5"' router-plugin/config.json.js
           grep -q 'var target="/Module_Softcenter.asp#/"' router-plugin/webs/Module_magic.asp
           grep -q 'window.top.location.replace(target)' router-plugin/webs/Module_magic.asp
           grep -q 'onunload="unloadPage();"' router-plugin/webs/Module_magic.asp
