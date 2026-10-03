@@ -22,6 +22,9 @@ RSS_RESTART_MAX=3
 CRASH_RESTART_STATE="/tmp/magic_crash_restart.state"
 CRASH_RESTART_WINDOW=600
 CRASH_RESTART_MAX=3
+BOOT_RETRY_PIDFILE="/var/run/magic-boot-retry.pid"
+BOOT_RETRY_MAX=12
+BOOT_RETRY_DELAY=10
 STOP_MARKER="/tmp/magic_intentional_stop"
 PERIODIC_RESTART_STATE="/tmp/magic_periodic_restart.state"
 PERIODIC_RESTART_MAX=3
@@ -85,9 +88,42 @@ get_wan_ipv4() {
 
 is_init_invocation() {
     case "$0" in
-        /koolshare/init.d/S97magic.sh|/koolshare/init.d/N97magic.sh) return 0 ;;
+        /koolshare/init.d/S97magic.sh|/koolshare/init.d/N97magic.sh|/koolshare/init.d/V97magic.sh) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+ensure_init_links() {
+    mkdir -p /koolshare/init.d
+    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/S97magic.sh
+    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/N97magic.sh
+    ln -sf /koolshare/scripts/magic_config.sh /koolshare/init.d/V97magic.sh
+}
+
+schedule_boot_retry() {
+    if [ -f "${BOOT_RETRY_PIDFILE}" ]; then
+        BPID="$(cat "${BOOT_RETRY_PIDFILE}" 2>/dev/null)"
+        if [ -n "${BPID}" ] && kill -0 "${BPID}" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    rm -f "${BOOT_RETRY_PIDFILE}"
+
+    (
+        trap 'rm -f "${BOOT_RETRY_PIDFILE}" >/dev/null 2>&1' EXIT
+        ATTEMPT=1
+        while [ "${ATTEMPT}" -le "${BOOT_RETRY_MAX}" ] 2>/dev/null; do
+            sleep "${BOOT_RETRY_DELAY}"
+            ENABLED="$(dbus get magic_enable 2>/dev/null)"
+            [ "${ENABLED}" = "1" ] || exit 0
+            sh /koolshare/scripts/magic_config.sh boot >/dev/null 2>&1
+            sleep 1
+            is_running && exit 0
+            ATTEMPT=$((ATTEMPT + 1))
+        done
+        log_user "✗ 开机自动启动多次重试仍未成功；已保留启用设置，可稍后手工重启服务。"
+    ) >/dev/null 2>&1 &
+    echo $! > "${BOOT_RETRY_PIDFILE}"
 }
 
 trim_one_log() {
@@ -384,8 +420,12 @@ start_service() {
     sleep 2
 
     if ! is_running; then
-        log_user "✗ MagicTier启动失败，已停止自动运行。"
-        dbus set magic_enable="0"
+        if [ "${MAGICTIER_PRESERVE_ENABLE_ON_FAIL:-0}" = "1" ]; then
+            log_user "✗ MagicTier启动失败，保留开机自动启动设置并等待重试。"
+        else
+            log_user "✗ MagicTier启动失败，已停止自动运行。"
+            dbus set magic_enable="0"
+        fi
         rm -f "${PIDFILE}"
         trim_logs
         return 1
@@ -447,7 +487,11 @@ esac
 
 case "${ACTION}" in
     boot)
-        [ "${magic_enable}" = "1" ] || exit 0
+        ENABLED="$(dbus get magic_enable 2>/dev/null)"
+        [ "${ENABLED}" = "1" ] || exit 0
+        magic_enable="1"
+        ensure_init_links
+        MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
         start_service
         exit $?
         ;;
@@ -474,7 +518,15 @@ case "${ACTION}" in
     start)
         if is_init_invocation; then
             [ "${magic_enable}" = "1" ] || exit 0
+            ensure_init_links
+            MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
+            if start_service; then
+                exit 0
+            fi
+            schedule_boot_retry
+            exit 0
         else
+            ensure_init_links
             dbus set magic_enable="1"
             magic_enable="1"
         fi
@@ -515,8 +567,12 @@ esac
 
 case "$2" in
     1)
+        ensure_init_links
         if [ "${magic_enable}" = "1" ]; then
-            start_service
+            MAGICTIER_PRESERVE_ENABLE_ON_FAIL=1
+            if ! start_service; then
+                schedule_boot_retry
+            fi
         else
             stop_service
             rm -f "${PERIODIC_RESTART_STATE}"
