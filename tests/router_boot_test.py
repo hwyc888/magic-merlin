@@ -52,10 +52,12 @@ http_response() { printf '%s\\n' "$*"; }
         (self.root / 'koolshare/scripts/base.sh').write_text(base, encoding='utf8')
         source = (REPO / 'router-plugin/scripts/magic_config.sh').read_text(encoding='utf8')
         source = source.replace('source /koolshare/scripts/base.sh', '. /koolshare/scripts/base.sh')
-        source = source.replace('/koolshare', self.r + '/koolshare')
-        source = source.replace('/var/run/', self.r + '/run/')
+        # Map original /tmp paths first: on Linux the sandbox itself is under /tmp.
+        # Otherwise a second replacement would corrupt already-mapped koolshare/run paths.
         source = source.replace('"/tmp/', '"' + self.r + '/tmp/')
         source = source.replace('mkdir -p /tmp/upload', 'mkdir -p "' + self.r + '/tmp/upload"')
+        source = source.replace('/koolshare', self.r + '/koolshare')
+        source = source.replace('/var/run/', self.r + '/run/')
         source = source.replace('BOOT_RETRY_DELAY=10', 'BOOT_RETRY_DELAY=0.05')
         source = source.replace('BOOT_RETRY_MAX=12', 'BOOT_RETRY_MAX=4')
         source = source.replace('sleep 1', 'sleep 0.02')
